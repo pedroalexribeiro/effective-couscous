@@ -84,6 +84,25 @@ describe("enumerate", () => {
     ]);
   });
 
+  it("requires the listed minutes in each subject, not any mix", () => {
+    const input = twoNonOverlappingPeriods();
+    input.caseload = [
+      {
+        studentId: "ana",
+        requiredMinutes: 90,
+        requiredSubjects: ["Math", "Portuguese"],
+        subjectMinutes: { Math: 45, Portuguese: 45 },
+      },
+    ];
+    input.requiredTotalMinutes = 90;
+    const result = enumerate(input);
+    expect(result.configurations).toHaveLength(1);
+    expect(periodIds(result.configurations[0].visits)).toEqual([
+      "p-math-mon",
+      "p-pt-tue",
+    ]);
+  });
+
   it("returns no week when the caseload is empty", () => {
     const result = enumerate(emptyOrganizerInput());
     expect(result.configurations).toHaveLength(0);

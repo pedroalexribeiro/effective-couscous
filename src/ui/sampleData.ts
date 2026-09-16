@@ -50,9 +50,9 @@ export function sampleWeek(): OrganizerInput {
       },
     ],
     caseload: [
-      { studentId: "ana", requiredMinutes: 45, requiredSubjects: ["Matemática"] },
-      { studentId: "bruno", requiredMinutes: 45, requiredSubjects: ["Matemática"] },
-      { studentId: "carla", requiredMinutes: 45, requiredSubjects: ["Matemática"] },
+      { studentId: "ana", requiredMinutes: 45, requiredSubjects: ["Matemática"], subjectMinutes: {} },
+      { studentId: "bruno", requiredMinutes: 45, requiredSubjects: ["Matemática"], subjectMinutes: {} },
+      { studentId: "carla", requiredMinutes: 45, requiredSubjects: ["Matemática"], subjectMinutes: {} },
     ],
     requiredTotalMinutes: 90,
     freeBlocks: [],

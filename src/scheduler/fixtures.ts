@@ -22,8 +22,8 @@ export function twoStudentsSameMathPeriod(): OrganizerInput {
     { id: "bruno", name: "Bruno", turmaId: "turma-5a" },
   ];
   input.caseload = [
-    { studentId: "ana", requiredMinutes: 45, requiredSubjects: ["Math"] },
-    { studentId: "bruno", requiredMinutes: 45, requiredSubjects: ["Math"] },
+    { studentId: "ana", requiredMinutes: 45, requiredSubjects: ["Math"], subjectMinutes: {} },
+    { studentId: "bruno", requiredMinutes: 45, requiredSubjects: ["Math"], subjectMinutes: {} },
   ];
   input.requiredTotalMinutes = 45;
   input.preferences = { ...EMPTY_PREFERENCES };
@@ -34,7 +34,7 @@ export function twoNonOverlappingPeriods(): OrganizerInput {
   const input = twoStudentsSameMathPeriod();
   input.students = [{ id: "ana", name: "Ana", turmaId: "turma-5a" }];
   input.caseload = [
-    { studentId: "ana", requiredMinutes: 45, requiredSubjects: [] },
+    { studentId: "ana", requiredMinutes: 45, requiredSubjects: [], subjectMinutes: {} },
   ];
   input.requiredTotalMinutes = 45;
   input.periods = [

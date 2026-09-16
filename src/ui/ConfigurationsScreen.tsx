@@ -4,12 +4,22 @@ import {
   turmaById,
   turmaLabel,
 } from "../domain/index.ts";
-import type { Configuration, OrganizerInput, Period, Visit } from "../domain/index.ts";
+import type { CaseloadGoal, Configuration, OrganizerInput, Period, Visit } from "../domain/index.ts";
 import { useConfigurations, useOrganizer } from "./OrganizerContext.tsx";
 import { WeekCalendar, type CalendarEvent } from "./WeekCalendar.tsx";
 
 function periodLookup(periods: Period[]): Map<string, Period> {
   return new Map(periods.map((period) => [period.id, period]));
+}
+
+function formatGoalSplit(goal: CaseloadGoal): string {
+  const splits = Object.entries(goal.subjectMinutes ?? {}).filter(
+    ([, minutes]) => minutes > 0,
+  );
+  if (splits.length === 0) {
+    return "";
+  }
+  return ` · ${splits.map(([subject, minutes]) => `${subject} ${minutes}`).join(" + ")}`;
 }
 
 export function ConfigurationsScreen() {
@@ -92,6 +102,7 @@ function ConfigurationDetail({
           return (
             <li key={goal.studentId}>
               {student?.name ?? goal.studentId}: {got} / {goal.requiredMinutes} min
+              {formatGoalSplit(goal)}
             </li>
           );
         })}

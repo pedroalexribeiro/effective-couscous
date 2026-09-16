@@ -35,17 +35,33 @@ function remainingNeed(
   return remaining;
 }
 
+function remainingSubjectNeed(
+  goal: OrganizerInput["caseload"][number],
+  creditedSubject: Record<string, Record<string, number>>,
+): Array<[string, number]> {
+  return Object.entries(goal.subjectMinutes ?? {})
+    .map(([subject, need]) => {
+      const got = creditedSubject[goal.studentId]?.[subject] ?? 0;
+      return [subject, Math.max(0, need - got)] as [string, number];
+    })
+    .filter(([, left]) => left > 0);
+}
+
 function studentCapacity(
   candidates: CandidatePeriod[],
   openIndexes: number[],
   chosen: ChosenVisit[],
   input: OrganizerInput,
   studentId: string,
+  subject?: string,
 ): number {
   let capacity = 0;
   for (const index of openIndexes) {
     const candidate = candidates[index];
     if (!candidate.eligibleStudentIds.includes(studentId)) {
+      continue;
+    }
+    if (subject && candidate.period.subject !== subject) {
       continue;
     }
     if (visitConflictsWithChosen(input, candidates, candidate, chosen)) {
@@ -79,19 +95,36 @@ function canStillMeet(
   openIndexes: number[],
   chosen: ChosenVisit[],
   credited: Record<string, number>,
+  creditedSubject: Record<string, Record<string, number>>,
   wallClock: number,
 ): boolean {
   const need = remainingNeed(input.caseload, credited);
   for (const goal of input.caseload) {
     const left = need[goal.studentId];
-    if (left === 0) {
-      continue;
+    if (left > 0) {
+      if (
+        studentCapacity(candidates, openIndexes, chosen, input, goal.studentId) <
+        left
+      ) {
+        return false;
+      }
     }
-    if (
-      studentCapacity(candidates, openIndexes, chosen, input, goal.studentId) <
-      left
-    ) {
-      return false;
+    for (const [subject, subjectLeft] of remainingSubjectNeed(
+      goal,
+      creditedSubject,
+    )) {
+      if (
+        studentCapacity(
+          candidates,
+          openIndexes,
+          chosen,
+          input,
+          goal.studentId,
+          subject,
+        ) < subjectLeft
+      ) {
+        return false;
+      }
     }
   }
   const wallLeft = Math.max(0, input.requiredTotalMinutes - wallClock);
@@ -104,14 +137,21 @@ function canStillMeet(
 function quotasMet(
   input: OrganizerInput,
   credited: Record<string, number>,
+  creditedSubject: Record<string, Record<string, number>>,
   wallClock: number,
 ): boolean {
   if (wallClock < input.requiredTotalMinutes) {
     return false;
   }
-  return input.caseload.every(
-    (goal) => (credited[goal.studentId] ?? 0) >= goal.requiredMinutes,
-  );
+  return input.caseload.every((goal) => {
+    if ((credited[goal.studentId] ?? 0) < goal.requiredMinutes) {
+      return false;
+    }
+    return Object.entries(goal.subjectMinutes ?? {}).every(
+      ([subject, need]) =>
+        (creditedSubject[goal.studentId]?.[subject] ?? 0) >= need,
+    );
+  });
 }
 
 function pickMrvIndex(
@@ -202,6 +242,20 @@ function infeasibleReasons(
         `${student?.name ?? "Um aluno"} precisa de ${goal.requiredMinutes} minutos, mas só existem ${capacity} minutos elegíveis.`,
       );
     }
+    for (const [subject, need] of Object.entries(goal.subjectMinutes ?? {})) {
+      const subjectCapacity = candidates
+        .filter(
+          (candidate) =>
+            candidate.eligibleStudentIds.includes(goal.studentId) &&
+            candidate.period.subject === subject,
+        )
+        .reduce((sum, candidate) => sum + candidate.minutes, 0);
+      if (subjectCapacity < need) {
+        reasons.push(
+          `${student?.name ?? "Um aluno"} precisa de ${need} minutos de ${subject}, mas só existem ${subjectCapacity} minutos elegíveis.`,
+        );
+      }
+    }
   }
 
   const wallCapacity = candidates.reduce(
@@ -221,21 +275,56 @@ function infeasibleReasons(
   return reasons;
 }
 
+function addCredit(
+  credited: Record<string, number>,
+  creditedSubject: Record<string, Record<string, number>>,
+  studentId: string,
+  subject: string,
+  minutes: number,
+): void {
+  credited[studentId] = (credited[studentId] ?? 0) + minutes;
+  const bySubject = creditedSubject[studentId] ?? {};
+  bySubject[subject] = (bySubject[subject] ?? 0) + minutes;
+  creditedSubject[studentId] = bySubject;
+}
+
+function removeCredit(
+  credited: Record<string, number>,
+  creditedSubject: Record<string, Record<string, number>>,
+  studentId: string,
+  subject: string,
+  minutes: number,
+): void {
+  credited[studentId] -= minutes;
+  creditedSubject[studentId][subject] -= minutes;
+}
+
 function search(
   input: OrganizerInput,
   candidates: CandidatePeriod[],
   openIndexes: number[],
   chosen: ChosenVisit[],
   credited: Record<string, number>,
+  creditedSubject: Record<string, Record<string, number>>,
   wallClock: number,
   found: Configuration[],
 ): void {
-  if (!canStillMeet(input, candidates, openIndexes, chosen, credited, wallClock)) {
+  if (
+    !canStillMeet(
+      input,
+      candidates,
+      openIndexes,
+      chosen,
+      credited,
+      creditedSubject,
+      wallClock,
+    )
+  ) {
     return;
   }
 
   if (openIndexes.length === 0) {
-    if (quotasMet(input, credited, wallClock)) {
+    if (quotasMet(input, credited, creditedSubject, wallClock)) {
       found.push(
         toConfiguration(input, candidates, chosen, credited, wallClock),
       );
@@ -248,14 +337,29 @@ function search(
   const candidate = candidates[pick];
 
   if (visitConflictsWithChosen(input, candidates, candidate, chosen)) {
-    search(input, candidates, rest, chosen, credited, wallClock, found);
+    search(
+      input,
+      candidates,
+      rest,
+      chosen,
+      credited,
+      creditedSubject,
+      wallClock,
+      found,
+    );
     return;
   }
 
   const assignments = nonEmptySubsets(candidate.eligibleStudentIds);
   for (const studentIds of assignments) {
     for (const studentId of studentIds) {
-      credited[studentId] = (credited[studentId] ?? 0) + candidate.minutes;
+      addCredit(
+        credited,
+        creditedSubject,
+        studentId,
+        candidate.period.subject,
+        candidate.minutes,
+      );
     }
     chosen.push({ candidateIndex: pick, studentIds });
     search(
@@ -264,16 +368,32 @@ function search(
       rest,
       chosen,
       credited,
+      creditedSubject,
       wallClock + candidate.minutes,
       found,
     );
     chosen.pop();
     for (const studentId of studentIds) {
-      credited[studentId] -= candidate.minutes;
+      removeCredit(
+        credited,
+        creditedSubject,
+        studentId,
+        candidate.period.subject,
+        candidate.minutes,
+      );
     }
   }
 
-  search(input, candidates, rest, chosen, credited, wallClock, found);
+  search(
+    input,
+    candidates,
+    rest,
+    chosen,
+    credited,
+    creditedSubject,
+    wallClock,
+    found,
+  );
 }
 
 export const enumerate: Enumerator = (input) => {
@@ -285,13 +405,24 @@ export const enumerate: Enumerator = (input) => {
   }
   const candidates = buildCandidates(input);
   const credited: Record<string, number> = {};
+  const creditedSubject: Record<string, Record<string, number>> = {};
   for (const goal of input.caseload) {
     credited[goal.studentId] = 0;
+    creditedSubject[goal.studentId] = {};
   }
 
   const found: Configuration[] = [];
   const openIndexes = candidates.map((_, index) => index);
-  search(input, candidates, openIndexes, [], credited, 0, found);
+  search(
+    input,
+    candidates,
+    openIndexes,
+    [],
+    credited,
+    creditedSubject,
+    0,
+    found,
+  );
 
   found.sort((a, b) => b.score - a.score || a.visits.length - b.visits.length);
 

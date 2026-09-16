@@ -3,6 +3,7 @@ import {
   parseTimeToMinutes,
 } from "../domain/index.ts";
 import type {
+  CaseloadGoal,
   FreeBlock,
   OrganizerInput,
   Period,
@@ -76,6 +77,14 @@ function freeBlockToFile(block: FreeBlock): FileFreeBlock {
   };
 }
 
+function caseloadFromFile(raw: CaseloadGoal): CaseloadGoal {
+  return {
+    ...raw,
+    requiredSubjects: raw.requiredSubjects ?? [],
+    subjectMinutes: raw.subjectMinutes ?? {},
+  };
+}
+
 export function organizerToFileJson(input: OrganizerInput): FileOrganizerInput {
   return {
     ...input,
@@ -93,5 +102,6 @@ export function organizerFromFileJson(raw: unknown): OrganizerInput {
     ...input,
     periods: (input.periods ?? []).map(periodFromFile),
     freeBlocks: (input.freeBlocks ?? []).map(freeBlockFromFile),
+    caseload: (input.caseload ?? []).map(caseloadFromFile),
   };
 }

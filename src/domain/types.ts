@@ -34,6 +34,7 @@ export type CaseloadGoal = {
   studentId: string;
   requiredMinutes: number;
   requiredSubjects: string[];
+  subjectMinutes: Record<string, number>;
 };
 
 export type AssistanceSlot = {

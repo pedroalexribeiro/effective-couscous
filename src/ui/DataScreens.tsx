@@ -8,11 +8,24 @@ import {
   turmaLabel,
   weekdayLabel,
 } from "../domain/index.ts";
-import type { OrganizerInput, Period, Weekday } from "../domain/index.ts";
+import type { CaseloadGoal, OrganizerInput, Period, Weekday } from "../domain/index.ts";
 import { Field, RowForm } from "./Field.tsx";
 import { createId } from "./ids.ts";
 import { useConfigurations, useOrganizer } from "./OrganizerContext.tsx";
 import { WeekCalendar, type CalendarEvent } from "./WeekCalendar.tsx";
+
+function formatCaseloadSubjects(goal: CaseloadGoal): string {
+  const splits = Object.entries(goal.subjectMinutes ?? {}).filter(
+    ([, minutes]) => minutes > 0,
+  );
+  if (splits.length > 0) {
+    return ` · ${splits.map(([subject, minutes]) => `${subject} ${minutes} min`).join(" + ")}`;
+  }
+  if (goal.requiredSubjects.length > 0) {
+    return ` · ${goal.requiredSubjects.join(", ")}`;
+  }
+  return " · qualquer disciplina";
+}
 
 export function SchoolsScreen() {
   const { input, setInput } = useOrganizer();
@@ -477,7 +490,7 @@ export function CaseloadScreen() {
       ...input,
       caseload: [
         ...input.caseload.filter((goal) => goal.studentId !== studentId),
-        { studentId, requiredMinutes, requiredSubjects },
+        { studentId, requiredMinutes, requiredSubjects, subjectMinutes: {} },
       ],
     });
     event.currentTarget.reset();
@@ -526,9 +539,7 @@ export function CaseloadScreen() {
           return (
             <li key={goal.studentId}>
               {student?.name ?? goal.studentId} · {goal.requiredMinutes} min
-              {goal.requiredSubjects.length > 0
-                ? ` · ${goal.requiredSubjects.join(", ")}`
-                : " · qualquer disciplina"}
+              {formatCaseloadSubjects(goal)}
               <button
                 type="button"
                 className="linkish"

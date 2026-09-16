@@ -206,6 +206,10 @@ function visitCalendarEvents(
         (id) => input.students.find((student) => student.id === id)?.name ?? id,
       )
       .join(", ");
+    const subtitle =
+      visit.kind === "presence"
+        ? "Só presença"
+        : `${names} · ${visit.kind === "group" ? "grupo" : "1:1"}`;
     return [
       {
         id: visit.periodId,
@@ -213,7 +217,7 @@ function visitCalendarEvents(
         startMinutes: period.startMinutes,
         endMinutes: period.endMinutes,
         title: period.subject,
-        subtitle: `${names} · ${visit.kind === "group" ? "grupo" : "1:1"}`,
+        subtitle,
         detail: turma
           ? turmaLabel(turma, schoolNameById(input, turma.schoolId))
           : undefined,

@@ -1,13 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  WEEKDAYS,
-  minutesToTime,
   schoolNameById,
   turmaById,
-  weekdayLabel,
+  turmaLabel,
 } from "../domain/index.ts";
-import type { Configuration, Period } from "../domain/index.ts";
+import type { Configuration, OrganizerInput, Period, Visit } from "../domain/index.ts";
 import { useConfigurations, useOrganizer } from "./OrganizerContext.tsx";
+import { WeekCalendar, type CalendarEvent } from "./WeekCalendar.tsx";
 
 function periodLookup(periods: Period[]): Map<string, Period> {
   return new Map(periods.map((period) => [period.id, period]));
@@ -97,71 +96,40 @@ function ConfigurationDetail({
           );
         })}
       </ul>
-      <WeekCalendar configuration={configuration} periods={periods} />
+      <WeekCalendar events={visitCalendarEvents(configuration.visits, periods, input)} />
     </div>
   );
 }
 
-function WeekCalendar({
-  configuration,
-  periods,
-}: {
-  configuration: Configuration;
-  periods: Map<string, Period>;
-}) {
-  const { input } = useOrganizer();
-
-  return (
-    <div className="week-grid">
-      {WEEKDAYS.map((day) => {
-        const visits = configuration.visits
-          .map((visit) => ({ visit, period: periods.get(visit.periodId) }))
-          .filter((item) => item.period?.weekday === day)
-          .sort(
-            (a, b) => (a.period?.startMinutes ?? 0) - (b.period?.startMinutes ?? 0),
-          );
-
-        return (
-          <div key={day} className="week-day">
-            <h3>{weekdayLabel(day)}</h3>
-            {visits.length === 0 ? (
-              <p className="hint">Livre</p>
-            ) : (
-              visits.map(({ visit, period }) => {
-                if (!period) {
-                  return null;
-                }
-                const turma = turmaById(input, period.turmaId);
-                const names = visit.studentIds
-                  .map(
-                    (id) =>
-                      input.students.find((student) => student.id === id)?.name ?? id,
-                  )
-                  .join(", ");
-                return (
-                  <article key={visit.periodId} className="visit-card">
-                    <p>
-                      {minutesToTime(period.startMinutes)}–
-                      {minutesToTime(period.endMinutes)}
-                    </p>
-                    <p>
-                      {period.subject}
-                      {visit.kind === "group" ? " · grupo" : " · 1:1"}
-                    </p>
-                    <p>{names}</p>
-                    {turma ? (
-                      <p className="hint">
-                        {turma.year}.º {turma.identification} ·{" "}
-                        {schoolNameById(input, turma.schoolId)}
-                      </p>
-                    ) : null}
-                  </article>
-                );
-              })
-            )}
-          </div>
-        );
-      })}
-    </div>
-  );
+function visitCalendarEvents(
+  visits: Visit[],
+  periods: Map<string, Period>,
+  input: OrganizerInput,
+): CalendarEvent[] {
+  return visits.flatMap((visit) => {
+    const period = periods.get(visit.periodId);
+    if (!period) {
+      return [];
+    }
+    const turma = turmaById(input, period.turmaId);
+    const names = visit.studentIds
+      .map(
+        (id) => input.students.find((student) => student.id === id)?.name ?? id,
+      )
+      .join(", ");
+    return [
+      {
+        id: visit.periodId,
+        weekday: period.weekday,
+        startMinutes: period.startMinutes,
+        endMinutes: period.endMinutes,
+        title: period.subject,
+        subtitle: `${names} · ${visit.kind === "group" ? "grupo" : "1:1"}`,
+        detail: turma
+          ? turmaLabel(turma, schoolNameById(input, turma.schoolId))
+          : undefined,
+        tone: visit.kind === "group" ? "tone-group" : "tone-visit",
+      },
+    ];
+  });
 }

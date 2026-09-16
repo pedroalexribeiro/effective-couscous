@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useMemo, useState, type FormEvent } from "react";
 import {
   WEEKDAYS,
   minutesToTime,
@@ -8,10 +8,11 @@ import {
   turmaLabel,
   weekdayLabel,
 } from "../domain/index.ts";
-import type { Weekday } from "../domain/index.ts";
+import type { OrganizerInput, Period, Weekday } from "../domain/index.ts";
 import { Field, RowForm } from "./Field.tsx";
 import { createId } from "./ids.ts";
 import { useConfigurations, useOrganizer } from "./OrganizerContext.tsx";
+import { WeekCalendar, type CalendarEvent } from "./WeekCalendar.tsx";
 
 export function SchoolsScreen() {
   const { input, setInput } = useOrganizer();
@@ -211,6 +212,7 @@ export function StudentsScreen() {
 
 export function TimetableScreen() {
   const { input, setInput } = useOrganizer();
+  const [turmaFilter, setTurmaFilter] = useState("");
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -239,6 +241,19 @@ export function TimetableScreen() {
     });
     event.currentTarget.reset();
   }
+
+  const visiblePeriods = useMemo(
+    () =>
+      input.periods.filter(
+        (period) => !turmaFilter || period.turmaId === turmaFilter,
+      ),
+    [input.periods, turmaFilter],
+  );
+
+  const calendarEvents = useMemo(
+    () => periodCalendarEvents(input, visiblePeriods),
+    [input, visiblePeriods],
+  );
 
   return (
     <section>
@@ -276,37 +291,63 @@ export function TimetableScreen() {
         </Field>
         <button type="submit">Adicionar tempo</button>
       </RowForm>
-      <ul className="plain-list">
-        {input.periods.map((period) => {
-          const turma = turmaById(input, period.turmaId);
-          return (
-            <li key={period.id}>
-              {weekdayLabel(period.weekday)} {minutesToTime(period.startMinutes)}–
-              {minutesToTime(period.endMinutes)} · {period.subject}
-              {turma
-                ? ` · ${turmaLabel(turma, schoolNameById(input, turma.schoolId))}`
-                : ""}
-              <button
-                type="button"
-                className="linkish"
-                onClick={() =>
-                  setInput({
-                    ...input,
-                    periods: input.periods.filter((item) => item.id !== period.id),
-                    assistanceSlots: input.assistanceSlots.filter(
-                      (slot) => slot.periodId !== period.id,
-                    ),
-                  })
-                }
-              >
-                Remover
-              </button>
-            </li>
-          );
-        })}
-      </ul>
+      {input.turmas.length > 1 ? (
+        <label className="field calendar-filter">
+          <span>Ver turma</span>
+          <select
+            value={turmaFilter}
+            onChange={(event) => setTurmaFilter(event.target.value)}
+          >
+            <option value="">Todas</option>
+            {input.turmas.map((turma) => (
+              <option key={turma.id} value={turma.id}>
+                {turmaLabel(turma, schoolNameById(input, turma.schoolId))}
+              </option>
+            ))}
+          </select>
+        </label>
+      ) : null}
+      {visiblePeriods.length === 0 ? (
+        <p className="hint">Ainda não há tempos letivos neste horário.</p>
+      ) : null}
+      <WeekCalendar
+        events={calendarEvents}
+        onRemove={(periodId) =>
+          setInput({
+            ...input,
+            periods: input.periods.filter((item) => item.id !== periodId),
+            assistanceSlots: input.assistanceSlots.filter(
+              (slot) => slot.periodId !== periodId,
+            ),
+          })
+        }
+      />
     </section>
   );
+}
+
+function periodCalendarEvents(
+  input: OrganizerInput,
+  periods: Period[],
+): CalendarEvent[] {
+  return periods.map((period) => {
+    const turma = turmaById(input, period.turmaId);
+    const turmaIndex = Math.max(
+      input.turmas.findIndex((item) => item.id === period.turmaId),
+      0,
+    );
+    return {
+      id: period.id,
+      weekday: period.weekday,
+      startMinutes: period.startMinutes,
+      endMinutes: period.endMinutes,
+      title: period.subject,
+      subtitle: turma
+        ? turmaLabel(turma, schoolNameById(input, turma.schoolId))
+        : undefined,
+      tone: `tone-${turmaIndex % 4}`,
+    };
+  });
 }
 
 export function AssistanceScreen() {

@@ -1,6 +1,10 @@
 export type Weekday = 1 | 2 | 3 | 4 | 5;
 
-export type VisitKind = "one_on_one" | "group";
+/**
+ * `presence` is a period attended purely to reach your own required minutes:
+ * every student in it had already met their targets.
+ */
+export type VisitKind = "one_on_one" | "group" | "presence";
 
 export type School = {
   id: string;

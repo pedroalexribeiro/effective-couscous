@@ -336,6 +336,23 @@ button:disabled {
   overflow: hidden;
   font-size: 0.75rem;
   line-height: 1.25;
+  cursor: pointer;
+}
+
+.calendar-event.is-expanded {
+  z-index: 4;
+  overflow: visible;
+  box-shadow: 0 0.35rem 0.9rem rgba(31, 31, 31, 0.22);
+}
+
+.calendar-event:focus {
+  outline: none;
+}
+
+.calendar-event:focus-visible {
+  outline: 2px solid #1f1f1f;
+  outline-offset: 1px;
+  z-index: 4;
 }
 
 .calendar-event.has-remove {
@@ -344,6 +361,7 @@ button:disabled {
 
 .calendar-event p {
   margin: 0;
+  overflow-wrap: anywhere;
 }
 
 .calendar-event-time {

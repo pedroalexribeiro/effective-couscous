@@ -43,11 +43,18 @@ describe("enumerate", () => {
     const result = enumerate(twoNonOverlappingPeriods());
     const sets = result.configurations.map((config) => periodIds(config.visits));
 
+    // Either period alone satisfies Ana, and so does attending both. The third
+    // option only exists because the search no longer abandons a branch for
+    // having already succeeded.
     expect(sets).toEqual(
-      expect.arrayContaining([["p-math-mon"], ["p-pt-tue"]]),
+      expect.arrayContaining([
+        ["p-math-mon"],
+        ["p-pt-tue"],
+        ["p-math-mon", "p-pt-tue"],
+      ]),
     );
-    expect(sets).toHaveLength(2);
-    expect(result.totalFound).toBe(2);
+    expect(sets).toHaveLength(3);
+    expect(result.totalFound).toBe(3);
   });
 
   it("drops every configuration that collides with a free block", () => {
@@ -120,6 +127,116 @@ describe("enumerate", () => {
     );
     expect(mathOnly).toBeDefined();
     expect(result.configurations[0].score).toBeGreaterThan(mathOnly!.score);
+  });
+
+  it("allows a subject split that leaves the rest of the total free", () => {
+    // Ana must get 45 minutes of Maths; the other 45 can be any subject.
+    // This used to find nothing at all: once a subject split existed, the
+    // overall total stopped driving the search but was still demanded.
+    const input = twoNonOverlappingPeriods();
+    input.caseload = [
+      {
+        studentId: "ana",
+        requiredMinutes: 90,
+        requiredSubjects: [],
+        subjectMinutes: { Math: 45 },
+      },
+    ];
+    input.requiredTotalMinutes = 90;
+
+    const result = enumerate(input);
+    expect(result.totalFound).toBe(1);
+    expect(periodIds(result.configurations[0].visits)).toEqual([
+      "p-math-mon",
+      "p-pt-tue",
+    ]);
+    expect(result.configurations[0].studentMinutes.ana).toBe(90);
+  });
+
+  it("explains which target is out of reach instead of just failing", () => {
+    const input = twoNonOverlappingPeriods();
+    input.caseload = [
+      {
+        studentId: "ana",
+        requiredMinutes: 500,
+        requiredSubjects: [],
+        subjectMinutes: {},
+      },
+    ];
+
+    const result = enumerate(input);
+    expect(result.configurations).toHaveLength(0);
+    expect(result.infeasibleReasons).toEqual([
+      "Ana (total) precisa de 500 minutos, mas no máximo consegue 90.",
+    ]);
+  });
+
+  it("reports bad data before doing any searching", () => {
+    const input = twoNonOverlappingPeriods();
+    input.caseload = [
+      {
+        studentId: "ghost",
+        requiredMinutes: 45,
+        requiredSubjects: [],
+        subjectMinutes: {},
+      },
+    ];
+
+    const result = enumerate(input);
+    expect(result.infeasibleReasons).toContain(
+      "A carga aponta para um aluno inexistente.",
+    );
+  });
+
+  it("marks a period attended only to reach your own minutes as presence", () => {
+    // Ana needs 45 minutes, but you need 90 of attendance, so one period is
+    // there purely to make your own total up.
+    const input = twoNonOverlappingPeriods();
+    input.requiredTotalMinutes = 90;
+
+    const result = enumerate(input);
+    expect(result.totalFound).toBe(1);
+
+    const [configuration] = result.configurations;
+    expect(configuration.wallClockMinutes).toBe(90);
+    expect(configuration.studentMinutes.ana).toBe(45);
+
+    const kinds = configuration.visits.map((visit) => visit.kind).sort();
+    expect(kinds).toEqual(["one_on_one", "presence"]);
+    const presence = configuration.visits.find(
+      (visit) => visit.kind === "presence",
+    );
+    expect(presence?.studentIds).toEqual([]);
+  });
+
+  it("leaves out a student whose minutes are already covered", () => {
+    // Both students share the Monday period, but Bruno needs nothing more
+    // afterwards, so the later period is credited to Ana alone.
+    const input = twoStudentsSameMathPeriod();
+    input.periods.push({
+      id: "p-math-tue",
+      turmaId: "turma-5a",
+      weekday: 2,
+      startMinutes: 9 * 60,
+      endMinutes: 9 * 60 + 45,
+      subject: "Math",
+    });
+    input.caseload = [
+      { studentId: "ana", requiredMinutes: 90, requiredSubjects: ["Math"], subjectMinutes: {} },
+      { studentId: "bruno", requiredMinutes: 45, requiredSubjects: ["Math"], subjectMinutes: {} },
+    ];
+    input.requiredTotalMinutes = 90;
+
+    const result = enumerate(input);
+    expect(result.totalFound).toBe(1);
+
+    const [configuration] = result.configurations;
+    expect(configuration.studentMinutes).toEqual({ ana: 90, bruno: 45 });
+    const tuesday = configuration.visits.find(
+      (visit) => visit.periodId === "p-math-tue",
+    );
+    expect(tuesday?.studentIds).toEqual(["ana"]);
+    expect(tuesday?.kind).toBe("one_on_one");
   });
 
   it("returns no week when the caseload is empty", () => {

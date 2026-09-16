@@ -13,20 +13,28 @@ export type CandidatePeriod = {
   schoolId: string;
 };
 
-export function travelMinutesBetween(
-  input: OrganizerInput,
-  fromSchoolId: string,
-  toSchoolId: string,
-): number {
-  if (fromSchoolId === toSchoolId) {
-    return 0;
-  }
-  const fromSchool = input.schools.find((school) => school.id === fromSchoolId);
-  const toSchool = input.schools.find((school) => school.id === toSchoolId);
-  return Math.max(
-    fromSchool?.defaultTravelMinutes ?? 0,
-    toSchool?.defaultTravelMinutes ?? 0,
+/** Minutes needed to get from one school to another. Same school means zero. */
+export type TravelLookup = (fromSchoolId: string, toSchoolId: string) => number;
+
+/**
+ * Built once and reused. Each school carries a single travel figure rather
+ * than a school-to-school table, so the cost of a move is taken as the larger
+ * of the two ends.
+ */
+export function createTravelLookup(input: OrganizerInput): TravelLookup {
+  const minutesBySchool = new Map(
+    input.schools.map((school) => [school.id, school.defaultTravelMinutes]),
   );
+
+  return (fromSchoolId, toSchoolId) => {
+    if (fromSchoolId === toSchoolId) {
+      return 0;
+    }
+    return Math.max(
+      minutesBySchool.get(fromSchoolId) ?? 0,
+      minutesBySchool.get(toSchoolId) ?? 0,
+    );
+  };
 }
 
 function occupiedByAssistance(input: OrganizerInput, period: Period): boolean {
@@ -105,8 +113,9 @@ export type ChosenVisit = {
   studentIds: string[];
 };
 
-export function periodsConflict(
-  input: OrganizerInput,
+function clash(
+  travelBetween: TravelLookup,
+  minBreakMinutes: number,
   left: CandidatePeriod,
   right: CandidatePeriod,
 ): boolean {
@@ -129,20 +138,36 @@ export function periodsConflict(
       ? [left, right]
       : [right, left];
   const gap = gapAfter(first.period.endMinutes, second.period.startMinutes);
-  const travel = travelMinutesBetween(input, first.schoolId, second.schoolId);
-  const neededGap = Math.max(input.preferences.minBreakMinutes, travel);
-  return gap < neededGap;
+  const travel = travelBetween(first.schoolId, second.schoolId);
+  return gap < Math.max(minBreakMinutes, travel);
+}
+
+export function periodsConflict(
+  input: OrganizerInput,
+  left: CandidatePeriod,
+  right: CandidatePeriod,
+): boolean {
+  return clash(
+    createTravelLookup(input),
+    input.preferences.minBreakMinutes,
+    left,
+    right,
+  );
 }
 
 export function buildConflictMatrix(
   input: OrganizerInput,
   candidates: CandidatePeriod[],
 ): boolean[][] {
+  const travelBetween = createTravelLookup(input);
+  const { minBreakMinutes } = input.preferences;
+
   const conflicts = candidates.map(() => candidates.map(() => false));
   for (let left = 0; left < candidates.length; left += 1) {
     for (let right = left + 1; right < candidates.length; right += 1) {
-      const conflict = periodsConflict(
-        input,
+      const conflict = clash(
+        travelBetween,
+        minBreakMinutes,
         candidates[left],
         candidates[right],
       );
@@ -158,7 +183,9 @@ export function visitConflictsWithChosen(
   candidateIndex: number,
   chosen: ChosenVisit[],
 ): boolean {
-  return chosen.some((visit) => conflicts[candidateIndex][visit.candidateIndex]);
+  return chosen.some(
+    (visit) => conflicts[candidateIndex][visit.candidateIndex],
+  );
 }
 
 export function nonEmptySubsets(ids: string[]): string[][] {

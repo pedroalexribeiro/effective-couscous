@@ -117,6 +117,7 @@ function Shell() {
     hasResult,
     calculate,
     calculationIsStale,
+    progressLog,
   } = useConfigurations();
   const fileRef = useRef<HTMLInputElement>(null);
   const narrow = useNarrowViewport();
@@ -131,12 +132,14 @@ function Shell() {
         <div>
           <h1>Organizador de aulas</h1>
           <p className={`hint${calculating ? " busy" : ""}`}>
-            {calculationStatusText({
-              calculating,
-              hasResult,
-              configurations,
-              calculationIsStale,
-            })}
+            {calculating && progressLog.length > 0
+              ? progressLog[progressLog.length - 1]
+              : calculationStatusText({
+                  calculating,
+                  hasResult,
+                  configurations,
+                  calculationIsStale,
+                })}
           </p>
           <button type="button" onClick={calculate} disabled={calculating}>
             {calculating ? "A calcular…" : "Calcular semanas"}

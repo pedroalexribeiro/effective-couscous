@@ -39,6 +39,10 @@ type SearchProgress = {
   onProgress: (progress: EnumerateProgress) => void;
 };
 
+function weekWord(count: number): string {
+  return count === 1 ? "semana" : "semanas";
+}
+
 function formatElapsed(startedAt: number): string {
   return `${((Date.now() - startedAt) / 1000).toFixed(1)}s`;
 }
@@ -94,7 +98,7 @@ function tickSearchProgress(
     search.onProgress,
     {
       phase: "search",
-      message: `${formatElapsed(search.startedAt)} · ${search.visited.toLocaleString("pt-PT")} ramos · ${found.toLocaleString("pt-PT")} semanas · ${remainingPeriods} períodos por decidir${period}`,
+      message: `${formatElapsed(search.startedAt)} · ${search.visited.toLocaleString("pt-PT")} ramos · ${found.toLocaleString("pt-PT")} ${weekWord(found)} · ${remainingPeriods} períodos por decidir${period}`,
       found,
       remainingPeriods,
     },
@@ -555,7 +559,7 @@ export const enumerate: Enumerator = (input, onProgress) => {
       onProgress,
       {
         phase: "sort",
-        message: `A ordenar ${found.length.toLocaleString("pt-PT")} semanas…`,
+        message: `A ordenar ${found.length.toLocaleString("pt-PT")} ${weekWord(found.length)}…`,
         found: found.length,
         candidateCount: candidates.length,
       },
@@ -587,7 +591,7 @@ export const enumerate: Enumerator = (input, onProgress) => {
     onProgress,
     {
       phase: "done",
-      message: `Concluído: ${found.length.toLocaleString("pt-PT")} semanas em ${formatElapsed(startedAt)} (${(progress?.visited ?? 0).toLocaleString("pt-PT")} ramos).`,
+      message: `Concluído: ${found.length.toLocaleString("pt-PT")} ${weekWord(found.length)} em ${formatElapsed(startedAt)} (${(progress?.visited ?? 0).toLocaleString("pt-PT")} ramos).`,
       found: found.length,
       candidateCount: candidates.length,
       visitedNodes: progress?.visited,

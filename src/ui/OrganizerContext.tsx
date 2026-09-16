@@ -10,6 +10,7 @@ import {
 import { emptyOrganizerInput } from "../domain/index.ts";
 import type { OrganizerInput } from "../domain/index.ts";
 import { enumerate } from "../scheduler/index.ts";
+import { organizerFromFileJson } from "./jsonFormat.ts";
 import { downloadJson, loadState, saveState } from "./storage.ts";
 import { sampleWeek } from "./sampleData.ts";
 
@@ -52,7 +53,7 @@ export function OrganizerProvider({ children }: { children: ReactNode }) {
       exportJson: () => downloadJson(input),
       importJson: async (file: File) => {
         const text = await file.text();
-        setInputState(JSON.parse(text) as OrganizerInput);
+        setInputState(organizerFromFileJson(JSON.parse(text)));
       },
     }),
     [input, setInput],

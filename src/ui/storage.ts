@@ -1,5 +1,6 @@
 import { emptyOrganizerInput } from "../domain/index.ts";
 import type { OrganizerInput } from "../domain/index.ts";
+import { organizerFromFileJson, organizerToFileJson } from "./jsonFormat.ts";
 
 const STORAGE_KEY = "class-organizer-state";
 
@@ -9,18 +10,21 @@ export function loadState(): OrganizerInput {
     return emptyOrganizerInput();
   }
   try {
-    return JSON.parse(raw) as OrganizerInput;
+    return organizerFromFileJson(JSON.parse(raw));
   } catch {
     return emptyOrganizerInput();
   }
 }
 
 export function saveState(input: OrganizerInput): void {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(input));
+  localStorage.setItem(
+    STORAGE_KEY,
+    JSON.stringify(organizerToFileJson(input)),
+  );
 }
 
 export function downloadJson(input: OrganizerInput): void {
-  const blob = new Blob([JSON.stringify(input, null, 2)], {
+  const blob = new Blob([JSON.stringify(organizerToFileJson(input), null, 2)], {
     type: "application/json",
   });
   const url = URL.createObjectURL(blob);

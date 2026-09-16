@@ -27,6 +27,7 @@ export {
   periodDuration,
   weekdayLabel,
 } from "./time.ts";
+export { effectiveSubjectMinutes } from "./caseload.ts";
 export {
   schoolNameById,
   studentIsEligibleForPeriod,

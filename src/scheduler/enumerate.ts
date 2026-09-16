@@ -1,4 +1,9 @@
-import { minutesToTime, validateInput, weekdayLabel } from "../domain/index.ts";
+import {
+  effectiveSubjectMinutes,
+  minutesToTime,
+  validateInput,
+  weekdayLabel,
+} from "../domain/index.ts";
 import type {
   Configuration,
   EnumerateResult,
@@ -8,6 +13,7 @@ import type {
 } from "../domain/index.ts";
 import {
   buildCandidates,
+  buildConflictMatrix,
   nonEmptySubsets,
   visitConflictsWithChosen,
   type CandidatePeriod,
@@ -30,6 +36,7 @@ export type Enumerator = (
 ) => EnumerateResult;
 
 const PROGRESS_EVERY_MS = 150;
+const MAX_KEPT_CONFIGURATIONS = 50;
 
 type SearchProgress = {
   visited: number;
@@ -37,6 +44,15 @@ type SearchProgress = {
   startedAt: number;
   candidateCount: number;
   onProgress: (progress: EnumerateProgress) => void;
+};
+
+type SearchCtx = {
+  input: OrganizerInput;
+  candidates: CandidatePeriod[];
+  conflicts: boolean[][];
+  subjectNeedByStudent: Record<string, Record<string, number>>;
+  found: Configuration[];
+  progress: SearchProgress | undefined;
 };
 
 function weekWord(count: number): string {
@@ -125,35 +141,109 @@ function remainingNeed(
 }
 
 function remainingSubjectNeed(
-  goal: OrganizerInput["caseload"][number],
+  studentId: string,
+  subjectNeed: Record<string, number>,
   creditedSubject: Record<string, Record<string, number>>,
 ): Array<[string, number]> {
-  return Object.entries(goal.subjectMinutes ?? {})
+  return Object.entries(subjectNeed)
     .map(([subject, need]) => {
-      const got = creditedSubject[goal.studentId]?.[subject] ?? 0;
+      const got = creditedSubject[studentId]?.[subject] ?? 0;
       return [subject, Math.max(0, need - got)] as [string, number];
     })
     .filter(([, left]) => left > 0);
 }
 
+function studentStillNeedsPeriod(
+  ctx: SearchCtx,
+  studentId: string,
+  candidate: CandidatePeriod,
+  credited: Record<string, number>,
+  creditedSubject: Record<string, Record<string, number>>,
+): boolean {
+  const subjectNeed = ctx.subjectNeedByStudent[studentId] ?? {};
+  if (Object.keys(subjectNeed).length > 0) {
+    const need = subjectNeed[candidate.period.subject] ?? 0;
+    if (need <= 0) {
+      return false;
+    }
+    return (creditedSubject[studentId]?.[candidate.period.subject] ?? 0) < need;
+  }
+  const goal = ctx.input.caseload.find((item) => item.studentId === studentId);
+  if (!goal) {
+    return false;
+  }
+  return (credited[studentId] ?? 0) < goal.requiredMinutes;
+}
+
+function takeOptionCount(
+  ctx: SearchCtx,
+  candidate: CandidatePeriod,
+  credited: Record<string, number>,
+  creditedSubject: Record<string, Record<string, number>>,
+  wallClock: number,
+): number {
+  let needy = 0;
+  for (const studentId of candidate.eligibleStudentIds) {
+    if (
+      studentStillNeedsPeriod(
+        ctx,
+        studentId,
+        candidate,
+        credited,
+        creditedSubject,
+      )
+    ) {
+      needy += 1;
+    }
+  }
+  if (needy > 0) {
+    return (1 << needy) - 1;
+  }
+  return wallClock < ctx.input.requiredTotalMinutes ? 1 : 0;
+}
+
+function usefulAssignments(
+  ctx: SearchCtx,
+  candidate: CandidatePeriod,
+  credited: Record<string, number>,
+  creditedSubject: Record<string, Record<string, number>>,
+  wallClock: number,
+): string[][] {
+  const needy = candidate.eligibleStudentIds.filter((studentId) =>
+    studentStillNeedsPeriod(
+      ctx,
+      studentId,
+      candidate,
+      credited,
+      creditedSubject,
+    ),
+  );
+  if (needy.length > 0) {
+    return nonEmptySubsets(needy);
+  }
+  if (wallClock < ctx.input.requiredTotalMinutes) {
+    return [candidate.eligibleStudentIds];
+  }
+  return [];
+}
+
 function studentCapacity(
-  candidates: CandidatePeriod[],
+  ctx: SearchCtx,
   openIndexes: number[],
   chosen: ChosenVisit[],
-  input: OrganizerInput,
   studentId: string,
   subject?: string,
 ): number {
   let capacity = 0;
   for (const index of openIndexes) {
-    const candidate = candidates[index];
+    const candidate = ctx.candidates[index];
     if (!candidate.eligibleStudentIds.includes(studentId)) {
       continue;
     }
     if (subject && candidate.period.subject !== subject) {
       continue;
     }
-    if (visitConflictsWithChosen(input, candidates, candidate, chosen)) {
+    if (visitConflictsWithChosen(ctx.conflicts, index, chosen)) {
       continue;
     }
     capacity += candidate.minutes;
@@ -162,52 +252,46 @@ function studentCapacity(
 }
 
 function wallClockCapacity(
-  candidates: CandidatePeriod[],
+  ctx: SearchCtx,
   openIndexes: number[],
   chosen: ChosenVisit[],
-  input: OrganizerInput,
 ): number {
   let capacity = 0;
   for (const index of openIndexes) {
-    const candidate = candidates[index];
-    if (visitConflictsWithChosen(input, candidates, candidate, chosen)) {
+    if (visitConflictsWithChosen(ctx.conflicts, index, chosen)) {
       continue;
     }
-    capacity += candidate.minutes;
+    capacity += ctx.candidates[index].minutes;
   }
   return capacity;
 }
 
 function canStillMeet(
-  input: OrganizerInput,
-  candidates: CandidatePeriod[],
+  ctx: SearchCtx,
   openIndexes: number[],
   chosen: ChosenVisit[],
   credited: Record<string, number>,
   creditedSubject: Record<string, Record<string, number>>,
   wallClock: number,
 ): boolean {
-  const need = remainingNeed(input.caseload, credited);
-  for (const goal of input.caseload) {
+  const need = remainingNeed(ctx.input.caseload, credited);
+  for (const goal of ctx.input.caseload) {
     const left = need[goal.studentId];
     if (left > 0) {
-      if (
-        studentCapacity(candidates, openIndexes, chosen, input, goal.studentId) <
-        left
-      ) {
+      if (studentCapacity(ctx, openIndexes, chosen, goal.studentId) < left) {
         return false;
       }
     }
     for (const [subject, subjectLeft] of remainingSubjectNeed(
-      goal,
+      goal.studentId,
+      ctx.subjectNeedByStudent[goal.studentId] ?? {},
       creditedSubject,
     )) {
       if (
         studentCapacity(
-          candidates,
+          ctx,
           openIndexes,
           chosen,
-          input,
           goal.studentId,
           subject,
         ) < subjectLeft
@@ -216,27 +300,27 @@ function canStillMeet(
       }
     }
   }
-  const wallLeft = Math.max(0, input.requiredTotalMinutes - wallClock);
+  const wallLeft = Math.max(0, ctx.input.requiredTotalMinutes - wallClock);
   if (wallLeft === 0) {
     return true;
   }
-  return wallClockCapacity(candidates, openIndexes, chosen, input) >= wallLeft;
+  return wallClockCapacity(ctx, openIndexes, chosen) >= wallLeft;
 }
 
 function quotasMet(
-  input: OrganizerInput,
+  ctx: SearchCtx,
   credited: Record<string, number>,
   creditedSubject: Record<string, Record<string, number>>,
   wallClock: number,
 ): boolean {
-  if (wallClock < input.requiredTotalMinutes) {
+  if (wallClock < ctx.input.requiredTotalMinutes) {
     return false;
   }
-  return input.caseload.every((goal) => {
+  return ctx.input.caseload.every((goal) => {
     if ((credited[goal.studentId] ?? 0) < goal.requiredMinutes) {
       return false;
     }
-    return Object.entries(goal.subjectMinutes ?? {}).every(
+    return Object.entries(ctx.subjectNeedByStudent[goal.studentId] ?? {}).every(
       ([subject, need]) =>
         (creditedSubject[goal.studentId]?.[subject] ?? 0) >= need,
     );
@@ -244,20 +328,27 @@ function quotasMet(
 }
 
 function pickMrvIndex(
-  input: OrganizerInput,
-  candidates: CandidatePeriod[],
+  ctx: SearchCtx,
   openIndexes: number[],
   chosen: ChosenVisit[],
+  credited: Record<string, number>,
+  creditedSubject: Record<string, Record<string, number>>,
+  wallClock: number,
 ): number {
   let bestIndex = openIndexes[0];
   let fewest = Number.POSITIVE_INFINITY;
 
   for (const index of openIndexes) {
-    const candidate = candidates[index];
-    if (visitConflictsWithChosen(input, candidates, candidate, chosen)) {
+    if (visitConflictsWithChosen(ctx.conflicts, index, chosen)) {
       return index;
     }
-    const optionCount = nonEmptySubsets(candidate.eligibleStudentIds).length;
+    const optionCount = takeOptionCount(
+      ctx,
+      ctx.candidates[index],
+      credited,
+      creditedSubject,
+      wallClock,
+    );
     if (optionCount < fewest) {
       fewest = optionCount;
       bestIndex = index;
@@ -331,7 +422,7 @@ function infeasibleReasons(
         `${student?.name ?? "Um aluno"} precisa de ${goal.requiredMinutes} minutos, mas só existem ${capacity} minutos elegíveis.`,
       );
     }
-    for (const [subject, need] of Object.entries(goal.subjectMinutes ?? {})) {
+    for (const [subject, need] of Object.entries(effectiveSubjectMinutes(goal))) {
       const subjectCapacity = candidates
         .filter(
           (candidate) =>
@@ -389,20 +480,16 @@ function removeCredit(
 }
 
 function search(
-  input: OrganizerInput,
-  candidates: CandidatePeriod[],
+  ctx: SearchCtx,
   openIndexes: number[],
   chosen: ChosenVisit[],
   credited: Record<string, number>,
   creditedSubject: Record<string, Record<string, number>>,
   wallClock: number,
-  found: Configuration[],
-  progress: SearchProgress | undefined,
 ): void {
   if (
     !canStillMeet(
-      input,
-      candidates,
+      ctx,
       openIndexes,
       chosen,
       credited,
@@ -410,41 +497,53 @@ function search(
       wallClock,
     )
   ) {
-    tickSearchProgress(progress, found.length, openIndexes.length);
+    tickSearchProgress(ctx.progress, ctx.found.length, openIndexes.length);
+    return;
+  }
+
+  if (quotasMet(ctx, credited, creditedSubject, wallClock)) {
+    ctx.found.push(
+      toConfiguration(
+        ctx.input,
+        ctx.candidates,
+        chosen,
+        credited,
+        wallClock,
+      ),
+    );
+    tickSearchProgress(ctx.progress, ctx.found.length, openIndexes.length);
     return;
   }
 
   if (openIndexes.length === 0) {
-    if (quotasMet(input, credited, creditedSubject, wallClock)) {
-      found.push(
-        toConfiguration(input, candidates, chosen, credited, wallClock),
-      );
-    }
-    tickSearchProgress(progress, found.length, 0);
+    tickSearchProgress(ctx.progress, ctx.found.length, 0);
     return;
   }
 
-  const pick = pickMrvIndex(input, candidates, openIndexes, chosen);
+  const pick = pickMrvIndex(
+    ctx,
+    openIndexes,
+    chosen,
+    credited,
+    creditedSubject,
+    wallClock,
+  );
   const rest = openIndexes.filter((index) => index !== pick);
-  const candidate = candidates[pick];
-  tickSearchProgress(progress, found.length, rest.length, candidate);
+  const candidate = ctx.candidates[pick];
+  tickSearchProgress(ctx.progress, ctx.found.length, rest.length, candidate);
 
-  if (visitConflictsWithChosen(input, candidates, candidate, chosen)) {
-    search(
-      input,
-      candidates,
-      rest,
-      chosen,
-      credited,
-      creditedSubject,
-      wallClock,
-      found,
-      progress,
-    );
+  if (visitConflictsWithChosen(ctx.conflicts, pick, chosen)) {
+    search(ctx, rest, chosen, credited, creditedSubject, wallClock);
     return;
   }
 
-  const assignments = nonEmptySubsets(candidate.eligibleStudentIds);
+  const assignments = usefulAssignments(
+    ctx,
+    candidate,
+    credited,
+    creditedSubject,
+    wallClock,
+  );
   for (const studentIds of assignments) {
     for (const studentId of studentIds) {
       addCredit(
@@ -457,15 +556,12 @@ function search(
     }
     chosen.push({ candidateIndex: pick, studentIds });
     search(
-      input,
-      candidates,
+      ctx,
       rest,
       chosen,
       credited,
       creditedSubject,
       wallClock + candidate.minutes,
-      found,
-      progress,
     );
     chosen.pop();
     for (const studentId of studentIds) {
@@ -479,17 +575,7 @@ function search(
     }
   }
 
-  search(
-    input,
-    candidates,
-    rest,
-    chosen,
-    credited,
-    creditedSubject,
-    wallClock,
-    found,
-    progress,
-  );
+  search(ctx, rest, chosen, credited, creditedSubject, wallClock);
 }
 
 export const enumerate: Enumerator = (input, onProgress) => {
@@ -502,6 +588,7 @@ export const enumerate: Enumerator = (input, onProgress) => {
   if (input.caseload.length === 0) {
     const result = {
       configurations: [],
+      totalFound: 0,
       infeasibleReasons: infeasibleReasons(input, buildCandidates(input)),
     };
     emitProgress(onProgress, {
@@ -535,24 +622,23 @@ export const enumerate: Enumerator = (input, onProgress) => {
 
   const credited: Record<string, number> = {};
   const creditedSubject: Record<string, Record<string, number>> = {};
+  const subjectNeedByStudent: Record<string, Record<string, number>> = {};
   for (const goal of input.caseload) {
     credited[goal.studentId] = 0;
     creditedSubject[goal.studentId] = {};
+    subjectNeedByStudent[goal.studentId] = effectiveSubjectMinutes(goal);
   }
 
   const found: Configuration[] = [];
-  const openIndexes = candidates.map((_, index) => index);
-  search(
+  const ctx: SearchCtx = {
     input,
     candidates,
-    openIndexes,
-    [],
-    credited,
-    creditedSubject,
-    0,
+    conflicts: buildConflictMatrix(input, candidates),
+    subjectNeedByStudent,
     found,
     progress,
-  );
+  };
+  search(ctx, candidates.map((_, index) => index), [], credited, creditedSubject, 0);
 
   if (found.length > 0) {
     emitProgress(
@@ -568,10 +654,15 @@ export const enumerate: Enumerator = (input, onProgress) => {
   }
 
   found.sort((a, b) => b.score - a.score || a.visits.length - b.visits.length);
+  const totalFound = found.length;
+  if (found.length > MAX_KEPT_CONFIGURATIONS) {
+    found.length = MAX_KEPT_CONFIGURATIONS;
+  }
 
   if (found.length === 0) {
     const result = {
       configurations: [],
+      totalFound: 0,
       infeasibleReasons: infeasibleReasons(input, candidates),
     };
     emitProgress(
@@ -591,7 +682,7 @@ export const enumerate: Enumerator = (input, onProgress) => {
     onProgress,
     {
       phase: "done",
-      message: `Concluído: ${found.length.toLocaleString("pt-PT")} ${weekWord(found.length)} em ${formatElapsed(startedAt)} (${(progress?.visited ?? 0).toLocaleString("pt-PT")} ramos).`,
+      message: `Concluído: ${totalFound.toLocaleString("pt-PT")} ${weekWord(totalFound)} em ${formatElapsed(startedAt)} (${(progress?.visited ?? 0).toLocaleString("pt-PT")} ramos)${totalFound > found.length ? ` · a mostrar as ${found.length} melhores` : ""}.`,
       found: found.length,
       candidateCount: candidates.length,
       visitedNodes: progress?.visited,
@@ -599,5 +690,5 @@ export const enumerate: Enumerator = (input, onProgress) => {
     progress,
   );
 
-  return { configurations: found, infeasibleReasons: [] };
+  return { configurations: found, totalFound, infeasibleReasons: [] };
 };

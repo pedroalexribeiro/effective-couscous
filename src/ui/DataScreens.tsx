@@ -1,4 +1,5 @@
 import { useMemo, useState, type FormEvent } from "react";
+import type { CaseloadGoal, OrganizerInput, Period, Weekday } from "../domain/index.ts";
 import {
   WEEKDAYS,
   minutesToTime,
@@ -8,7 +9,6 @@ import {
   turmaLabel,
   weekdayLabel,
 } from "../domain/index.ts";
-import type { CaseloadGoal, OrganizerInput, Period, Weekday } from "../domain/index.ts";
 import { Field, RowForm } from "./Field.tsx";
 import { createId } from "./ids.ts";
 import { useConfigurations, useOrganizer } from "./OrganizerContext.tsx";

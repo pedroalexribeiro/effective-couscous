@@ -105,43 +105,60 @@ export type ChosenVisit = {
   studentIds: string[];
 };
 
-export function visitConflictsWithChosen(
+export function periodsConflict(
+  input: OrganizerInput,
+  left: CandidatePeriod,
+  right: CandidatePeriod,
+): boolean {
+  if (left.period.weekday !== right.period.weekday) {
+    return false;
+  }
+  if (
+    intervalsOverlap(
+      left.period.startMinutes,
+      left.period.endMinutes,
+      right.period.startMinutes,
+      right.period.endMinutes,
+    )
+  ) {
+    return true;
+  }
+
+  const [first, second] =
+    left.period.startMinutes <= right.period.startMinutes
+      ? [left, right]
+      : [right, left];
+  const gap = gapAfter(first.period.endMinutes, second.period.startMinutes);
+  const travel = travelMinutesBetween(input, first.schoolId, second.schoolId);
+  const neededGap = Math.max(input.preferences.minBreakMinutes, travel);
+  return gap < neededGap;
+}
+
+export function buildConflictMatrix(
   input: OrganizerInput,
   candidates: CandidatePeriod[],
-  candidate: CandidatePeriod,
+): boolean[][] {
+  const conflicts = candidates.map(() => candidates.map(() => false));
+  for (let left = 0; left < candidates.length; left += 1) {
+    for (let right = left + 1; right < candidates.length; right += 1) {
+      const conflict = periodsConflict(
+        input,
+        candidates[left],
+        candidates[right],
+      );
+      conflicts[left][right] = conflict;
+      conflicts[right][left] = conflict;
+    }
+  }
+  return conflicts;
+}
+
+export function visitConflictsWithChosen(
+  conflicts: boolean[][],
+  candidateIndex: number,
   chosen: ChosenVisit[],
 ): boolean {
-  const breakMinutes = input.preferences.minBreakMinutes;
-
-  return chosen.some((visit) => {
-    const other = candidates[visit.candidateIndex];
-    if (other.period.weekday !== candidate.period.weekday) {
-      return false;
-    }
-    if (
-      intervalsOverlap(
-        candidate.period.startMinutes,
-        candidate.period.endMinutes,
-        other.period.startMinutes,
-        other.period.endMinutes,
-      )
-    ) {
-      return true;
-    }
-
-    const [first, second] =
-      candidate.period.startMinutes <= other.period.startMinutes
-        ? [candidate, other]
-        : [other, candidate];
-    const gap = gapAfter(first.period.endMinutes, second.period.startMinutes);
-    const travel = travelMinutesBetween(
-      input,
-      first.schoolId,
-      second.schoolId,
-    );
-    const neededGap = Math.max(breakMinutes, travel);
-    return gap < neededGap;
-  });
+  return chosen.some((visit) => conflicts[candidateIndex][visit.candidateIndex]);
 }
 
 export function nonEmptySubsets(ids: string[]): string[][] {

@@ -44,9 +44,10 @@ describe("enumerate", () => {
     const sets = result.configurations.map((config) => periodIds(config.visits));
 
     expect(sets).toEqual(
-      expect.arrayContaining([["p-math-mon"], ["p-pt-tue"], ["p-math-mon", "p-pt-tue"]]),
+      expect.arrayContaining([["p-math-mon"], ["p-pt-tue"]]),
     );
-    expect(sets).toHaveLength(3);
+    expect(sets).toHaveLength(2);
+    expect(result.totalFound).toBe(2);
   });
 
   it("drops every configuration that collides with a free block", () => {
@@ -105,7 +106,6 @@ describe("enumerate", () => {
 
   it("ranks Portuguese ahead of Mathematics when it is preferred", () => {
     const input = twoNonOverlappingPeriods();
-    input.caseload[0].requiredSubjects = ["Math", "Portuguese"];
     input.preferences = {
       ...input.preferences,
       preferredSubjects: ["Portuguese"],

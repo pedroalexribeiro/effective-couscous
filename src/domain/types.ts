@@ -89,6 +89,7 @@ export type Configuration = {
 
 export type EnumerateResult = {
   configurations: Configuration[];
+  totalFound: number;
   infeasibleReasons: string[];
 };
 

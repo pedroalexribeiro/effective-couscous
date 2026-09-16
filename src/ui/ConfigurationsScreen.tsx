@@ -12,6 +12,16 @@ function periodLookup(periods: Period[]): Map<string, Period> {
   return new Map(periods.map((period) => [period.id, period]));
 }
 
+function weeksHint(shown: number, totalFound: number): string {
+  if (totalFound > shown) {
+    return `${totalFound} semanas possíveis. A lista mostra as ${shown} melhores. As preferências só ordenam.`;
+  }
+  if (shown === 1) {
+    return "1 semana possível. As preferências só ordenam esta lista.";
+  }
+  return `${shown} semanas possíveis. As preferências só ordenam esta lista.`;
+}
+
 function formatGoalSplit(goal: CaseloadGoal): string {
   const splits = Object.entries(goal.subjectMinutes ?? {}).filter(
     ([, minutes]) => minutes > 0,
@@ -26,6 +36,7 @@ export function ConfigurationsScreen() {
   const { input } = useOrganizer();
   const {
     configurations,
+    totalFound,
     infeasibleReasons,
     hasResult,
     calculating,
@@ -69,9 +80,7 @@ export function ConfigurationsScreen() {
       {configurations.length > 0 ? (
         <>
           <p className="hint">
-            {configurations.length === 1
-              ? "1 semana possível. As preferências só ordenam esta lista."
-              : `${configurations.length} semanas possíveis. As preferências só ordenam esta lista.`}
+            {weeksHint(configurations.length, totalFound)}
             {calculationIsStale ? " Os dados mudaram desde este cálculo." : ""}
           </p>
           <label className="field">

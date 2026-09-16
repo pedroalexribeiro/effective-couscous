@@ -200,6 +200,7 @@ export function useConfigurations() {
   } = useOrganizer();
   return {
     configurations: result?.configurations ?? [],
+    totalFound: result?.totalFound ?? 0,
     infeasibleReasons: result?.infeasibleReasons ?? [],
     hasResult: result !== null,
     calculating,

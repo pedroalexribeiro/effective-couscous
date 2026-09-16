@@ -6,6 +6,7 @@
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
+  -webkit-text-size-adjust: 100%;
 }
 
 * {
@@ -14,6 +15,7 @@
 
 body {
   margin: 0;
+  overflow-x: hidden;
 }
 
 h1,
@@ -43,6 +45,8 @@ button,
 input,
 select {
   font: inherit;
+  max-width: 100%;
+  touch-action: manipulation;
 }
 
 .app {
@@ -54,7 +58,12 @@ main,
 .tabs {
   max-width: 72rem;
   margin: 0 auto;
-  padding: 1rem 1.25rem;
+  padding: 1rem max(1.25rem, env(safe-area-inset-right)) 1rem
+    max(1.25rem, env(safe-area-inset-left));
+}
+
+main {
+  padding-bottom: max(1.5rem, env(safe-area-inset-bottom));
 }
 
 .topbar {
@@ -66,17 +75,41 @@ main,
 }
 
 .toolbar,
-.row-form,
-.tabs {
+.row-form {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
   align-items: end;
 }
 
+.toolbar-menu > summary {
+  display: none;
+  list-style: none;
+  cursor: pointer;
+  background: #1f1f1f;
+  color: #fff;
+  padding: 0.45rem 0.75rem;
+}
+
+.toolbar-menu > summary::-webkit-details-marker {
+  display: none;
+}
+
 .tabs {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 0.5rem;
+  align-items: stretch;
   border-bottom: 1px solid #c4bdb0;
   padding-bottom: 0;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  overscroll-behavior-x: contain;
+  position: sticky;
+  top: 0;
+  z-index: 6;
+  background: #f4f1ea;
 }
 
 button {
@@ -88,6 +121,8 @@ button {
 }
 
 .tabs button {
+  flex: 0 0 auto;
+  white-space: nowrap;
   background: #e7e1d6;
   color: #1f1f1f;
   border: 1px solid #c4bdb0;
@@ -120,6 +155,7 @@ button.linkish {
   flex-direction: column;
   gap: 0.2rem;
   font-size: 0.85rem;
+  min-width: 0;
 }
 
 .field input,
@@ -128,6 +164,7 @@ button.linkish {
   padding: 0.35rem 0.45rem;
   border: 1px solid #c9c4ba;
   background: #fff;
+  font-size: 1rem;
 }
 
 .hint {
@@ -142,7 +179,11 @@ button.linkish {
 }
 
 .plain-list li {
-  padding: 0.45rem 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.75rem;
+  align-items: baseline;
+  padding: 0.55rem 0;
   border-top: 1px solid #e4dfd5;
 }
 
@@ -156,6 +197,8 @@ button.linkish {
   border: 1px solid #e4dfd5;
   background: #fff;
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
 }
 
 .calendar-week-head,
@@ -182,7 +225,15 @@ button.linkish {
 }
 
 .calendar-time-gutter {
-  position: relative;
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  background: #fff;
+}
+
+.calendar-week-head .calendar-time-gutter {
+  background: #f7f4ee;
+  z-index: 3;
 }
 
 .calendar-hour-label {
@@ -273,4 +324,120 @@ button.linkish {
 .calendar-event.tone-group {
   background: #d4e3f0;
   border-color: #7e9bb8;
+}
+
+@media (max-width: 40rem) {
+  h1 {
+    font-size: 1.25rem;
+  }
+
+  .topbar,
+  main,
+  .tabs {
+    padding-left: max(1rem, env(safe-area-inset-left));
+    padding-right: max(1rem, env(safe-area-inset-right));
+  }
+
+  .topbar {
+    padding-top: 0.85rem;
+    padding-bottom: 0.5rem;
+    align-items: center;
+  }
+
+  .toolbar-menu:not([open]) {
+    margin-left: auto;
+  }
+
+  .toolbar-menu > summary {
+    display: inline-flex;
+    align-items: center;
+    min-height: 2.75rem;
+    padding: 0.5rem 0.9rem;
+  }
+
+  .toolbar-menu > summary::after {
+    content: " ▾";
+  }
+
+  .toolbar-menu[open] > summary {
+    background: #3a3a3a;
+  }
+
+  details.toolbar-menu[open] > .toolbar {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.5rem;
+    width: 100%;
+    margin-top: 0.6rem;
+    padding-top: 0.15rem;
+  }
+
+  .toolbar-menu .toolbar button {
+    min-height: 2.75rem;
+    width: 100%;
+  }
+
+  .topbar:has(.toolbar-menu[open]) {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .topbar:has(.toolbar-menu[open]) .toolbar-menu {
+    width: 100%;
+  }
+
+  .tabs {
+    padding-top: 0.35rem;
+    top: env(safe-area-inset-top);
+  }
+
+  .tabs button {
+    flex: 0 0 auto;
+    white-space: nowrap;
+    min-height: 2.75rem;
+    padding: 0.5rem 0.85rem;
+  }
+
+  button {
+    min-height: 2.75rem;
+    padding: 0.5rem 0.85rem;
+  }
+
+  button.linkish {
+    min-height: 2.5rem;
+    padding: 0.35rem 0.15rem 0.35rem 0.5rem;
+  }
+
+  .row-form {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .row-form > button {
+    width: 100%;
+  }
+
+  .plain-list li {
+    justify-content: space-between;
+  }
+
+  .field,
+  .field input,
+  .field select,
+  .calendar-filter {
+    width: 100%;
+    max-width: none;
+    min-width: 0;
+  }
+
+  .calendar-week-head,
+  .calendar-week-body {
+    grid-template-columns: 2.75rem repeat(5, minmax(6.25rem, 1fr));
+    min-width: 34.5rem;
+  }
+
+  .calendar-event-remove {
+    min-width: 1.75rem;
+    min-height: 1.75rem;
+  }
 }

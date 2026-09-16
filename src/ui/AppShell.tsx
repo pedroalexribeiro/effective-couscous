@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   AssistanceScreen,
   CaseloadScreen,
@@ -43,11 +43,57 @@ export function AppShell() {
   );
 }
 
+function useNarrowViewport() {
+  const [narrow, setNarrow] = useState(() =>
+    window.matchMedia("(max-width: 40rem)").matches,
+  );
+
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 40rem)");
+    const sync = () => setNarrow(media.matches);
+    sync();
+    media.addEventListener("change", sync);
+    return () => media.removeEventListener("change", sync);
+  }, []);
+
+  return narrow;
+}
+
+function DataToolbar({
+  onImportClick,
+}: {
+  onImportClick: () => void;
+}) {
+  const { reset, loadSample, exportJson } = useOrganizer();
+
+  return (
+    <div className="toolbar">
+      <button type="button" onClick={loadSample}>
+        Carregar semana de exemplo
+      </button>
+      <button type="button" onClick={exportJson}>
+        Exportar JSON
+      </button>
+      <button type="button" onClick={onImportClick}>
+        Importar JSON
+      </button>
+      <button type="button" onClick={reset}>
+        Limpar
+      </button>
+    </div>
+  );
+}
+
 function Shell() {
   const [screen, setScreen] = useState<Screen>("schools");
-  const { reset, loadSample, exportJson, importJson } = useOrganizer();
+  const { importJson } = useOrganizer();
   const { configurations } = useConfigurations();
   const fileRef = useRef<HTMLInputElement>(null);
+  const narrow = useNarrowViewport();
+
+  const toolbar = (
+    <DataToolbar onImportClick={() => fileRef.current?.click()} />
+  );
 
   return (
     <div className="app">
@@ -60,41 +106,42 @@ function Shell() {
               : `${configurations.length} semanas possíveis`}
           </p>
         </div>
-        <div className="toolbar">
-          <button type="button" onClick={loadSample}>
-            Carregar semana de exemplo
-          </button>
-          <button type="button" onClick={exportJson}>
-            Exportar JSON
-          </button>
-          <button type="button" onClick={() => fileRef.current?.click()}>
-            Importar JSON
-          </button>
-          <button type="button" onClick={reset}>
-            Limpar
-          </button>
-          <input
-            ref={fileRef}
-            type="file"
-            accept="application/json"
-            hidden
-            onChange={(event) => {
-              const file = event.target.files?.[0];
-              if (file) {
-                void importJson(file);
-              }
-              event.target.value = "";
-            }}
-          />
-        </div>
+        {narrow ? (
+          <details className="toolbar-menu">
+            <summary>Dados</summary>
+            {toolbar}
+          </details>
+        ) : (
+          toolbar
+        )}
+        <input
+          ref={fileRef}
+          type="file"
+          accept="application/json"
+          hidden
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            if (file) {
+              void importJson(file);
+            }
+            event.target.value = "";
+          }}
+        />
       </header>
-      <nav className="tabs">
+      <nav className="tabs" aria-label="Secções">
         {SCREENS.map((id) => (
           <button
             key={id}
             type="button"
             className={screen === id ? "active" : ""}
-            onClick={() => setScreen(id)}
+            onClick={(event) => {
+              setScreen(id);
+              event.currentTarget.scrollIntoView({
+                inline: "center",
+                block: "nearest",
+                behavior: "smooth",
+              });
+            }}
           >
             {SCREEN_LABEL[id]}
             {id === "configurations" ? ` (${configurations.length})` : ""}

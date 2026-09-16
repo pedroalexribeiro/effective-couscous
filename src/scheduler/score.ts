@@ -47,6 +47,9 @@ export function scoreConfiguration(
       (minutesByDay.get(period.weekday) ?? 0) + visit.minutes,
     );
 
+    if (prefs.preferredSubjects.includes(period.subject)) {
+      score += visit.minutes;
+    }
     if (prefs.preferredWeekdays.includes(period.weekday)) {
       score += 3;
     }

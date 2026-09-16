@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   schoolNameById,
   turmaById,
@@ -24,59 +24,128 @@ function formatGoalSplit(goal: CaseloadGoal): string {
 
 export function ConfigurationsScreen() {
   const { input } = useOrganizer();
-  const result = useConfigurations();
+  const {
+    configurations,
+    infeasibleReasons,
+    hasResult,
+    calculating,
+    progressLog,
+    calculate,
+    calculationIsStale,
+  } = useConfigurations();
   const [selectedIndex, setSelectedIndex] = useState(0);
-  const selected = result.configurations[selectedIndex] ?? result.configurations[0] ?? null;
+  const selected = configurations[selectedIndex] ?? configurations[0] ?? null;
   const periods = useMemo(() => periodLookup(input.periods), [input.periods]);
 
   useEffect(() => {
-    if (selectedIndex >= result.configurations.length) {
+    if (selectedIndex >= configurations.length) {
       setSelectedIndex(0);
     }
-  }, [result.configurations.length, selectedIndex]);
-
-  if (result.configurations.length === 0) {
-    return (
-      <section>
-        <h2>Configurações</h2>
-        <p>Nenhuma semana possível. Nada resta com as restrições atuais.</p>
-        <ul className="plain-list">
-          {result.infeasibleReasons.map((reason) => (
-            <li key={reason}>{reason}</li>
-          ))}
-        </ul>
-      </section>
-    );
-  }
+  }, [configurations.length, selectedIndex]);
 
   return (
     <section>
       <h2>Configurações</h2>
-      <p className="hint">
-        {result.configurations.length === 1
-          ? "1 semana possível. As preferências só ordenam esta lista."
-          : `${result.configurations.length} semanas possíveis. As preferências só ordenam esta lista.`}
-      </p>
-      <label className="field">
-        <span>Percorrer</span>
-        <select
-          value={selectedIndex}
-          onChange={(event) => setSelectedIndex(Number(event.target.value))}
-        >
-          {result.configurations.map((config, index) => (
-            <option key={index} value={index}>
-              {`Semana ${index + 1} · ${config.visits.length} ${config.visits.length === 1 ? "visita" : "visitas"} · ${config.wallClockMinutes} min seus`}
-            </option>
-          ))}
-        </select>
-      </label>
-      {selected ? (
-        <ConfigurationDetail
-          configuration={selected}
-          periods={periods}
-        />
+      <CalculationStatus
+        calculating={calculating}
+        calculationIsStale={calculationIsStale}
+        hasResult={hasResult}
+        progressLog={progressLog}
+        onCalculate={calculate}
+      />
+      {!hasResult && !calculating ? (
+        <p>Ainda não calculou as semanas possíveis.</p>
+      ) : null}
+      {hasResult && configurations.length === 0 ? (
+        <>
+          <p>Nenhuma semana possível. Nada resta com as restrições atuais.</p>
+          <ul className="plain-list">
+            {infeasibleReasons.map((reason) => (
+              <li key={reason}>{reason}</li>
+            ))}
+          </ul>
+        </>
+      ) : null}
+      {configurations.length > 0 ? (
+        <>
+          <p className="hint">
+            {configurations.length === 1
+              ? "1 semana possível. As preferências só ordenam esta lista."
+              : `${configurations.length} semanas possíveis. As preferências só ordenam esta lista.`}
+            {calculationIsStale ? " Os dados mudaram desde este cálculo." : ""}
+          </p>
+          <label className="field">
+            <span>Percorrer</span>
+            <select
+              value={selectedIndex}
+              onChange={(event) => setSelectedIndex(Number(event.target.value))}
+            >
+              {configurations.map((config, index) => (
+                <option key={index} value={index}>
+                  {`Semana ${index + 1} · ${config.visits.length} ${config.visits.length === 1 ? "visita" : "visitas"} · ${config.wallClockMinutes} min seus`}
+                </option>
+              ))}
+            </select>
+          </label>
+          {selected ? (
+            <ConfigurationDetail
+              configuration={selected}
+              periods={periods}
+            />
+          ) : null}
+        </>
       ) : null}
     </section>
+  );
+}
+
+function CalculationStatus({
+  calculating,
+  calculationIsStale,
+  hasResult,
+  progressLog,
+  onCalculate,
+}: {
+  calculating: boolean;
+  calculationIsStale: boolean;
+  hasResult: boolean;
+  progressLog: string[];
+  onCalculate: () => void;
+}) {
+  const logRef = useRef<HTMLPreElement>(null);
+
+  useEffect(() => {
+    logRef.current?.scrollTo(0, logRef.current.scrollHeight);
+  }, [progressLog]);
+
+  return (
+    <div className="calculation-panel">
+      {calculating ? (
+        <div className="calculating-banner" role="status" aria-live="polite">
+          <strong>A calcular as semanas possíveis</strong>
+          <p>
+            Isto pode demorar. Não desligue o ecrã — o telefone pode parecer
+            parado, mas o cálculo continua.
+          </p>
+        </div>
+      ) : null}
+      <div className="calculate-row">
+        <button type="button" onClick={onCalculate} disabled={calculating}>
+          {calculating ? "A calcular…" : "Calcular semanas"}
+        </button>
+        {calculationIsStale ? (
+          <p className="hint">Os dados mudaram. Calcule de novo para atualizar a lista.</p>
+        ) : null}
+        {!hasResult && !calculating ? (
+          <p className="hint">O cálculo só corre quando premir o botão.</p>
+        ) : null}
+      </div>
+      {progressLog.length > 0 ? (
+        <pre ref={logRef} className="debug-log" aria-live="polite">
+          {progressLog.join("\n")}
+        </pre>
+      ) : null}
+    </div>
   );
 }
 

@@ -1,4 +1,4 @@
-import { validateInput } from "../domain/index.ts";
+import { minutesToTime, validateInput, weekdayLabel } from "../domain/index.ts";
 import type {
   Configuration,
   EnumerateResult,
@@ -15,7 +15,92 @@ import {
 } from "./candidates.ts";
 import { scoreConfiguration } from "./score.ts";
 
-export type Enumerator = (input: OrganizerInput) => EnumerateResult;
+export type EnumerateProgress = {
+  phase: "candidates" | "search" | "sort" | "done";
+  message: string;
+  visitedNodes: number;
+  found: number;
+  candidateCount: number;
+  remainingPeriods: number;
+};
+
+export type Enumerator = (
+  input: OrganizerInput,
+  onProgress?: (progress: EnumerateProgress) => void,
+) => EnumerateResult;
+
+const PROGRESS_EVERY_MS = 150;
+
+type SearchProgress = {
+  visited: number;
+  lastReportAt: number;
+  startedAt: number;
+  candidateCount: number;
+  onProgress: (progress: EnumerateProgress) => void;
+};
+
+function formatElapsed(startedAt: number): string {
+  return `${((Date.now() - startedAt) / 1000).toFixed(1)}s`;
+}
+
+function periodDebugLabel(candidate: CandidatePeriod): string {
+  const { period } = candidate;
+  return `${weekdayLabel(period.weekday)} ${minutesToTime(period.startMinutes)} ${period.subject}`;
+}
+
+function emitProgress(
+  onProgress: ((progress: EnumerateProgress) => void) | undefined,
+  update: {
+    phase: EnumerateProgress["phase"];
+    message: string;
+    found?: number;
+    candidateCount?: number;
+    remainingPeriods?: number;
+    visitedNodes?: number;
+  },
+  search?: SearchProgress,
+): void {
+  if (!onProgress) {
+    return;
+  }
+  onProgress({
+    phase: update.phase,
+    message: update.message,
+    visitedNodes: update.visitedNodes ?? search?.visited ?? 0,
+    found: update.found ?? 0,
+    candidateCount: update.candidateCount ?? search?.candidateCount ?? 0,
+    remainingPeriods: update.remainingPeriods ?? 0,
+  });
+  if (search) {
+    search.lastReportAt = Date.now();
+  }
+}
+
+function tickSearchProgress(
+  search: SearchProgress | undefined,
+  found: number,
+  remainingPeriods: number,
+  current?: CandidatePeriod,
+): void {
+  if (!search) {
+    return;
+  }
+  search.visited += 1;
+  if (Date.now() - search.lastReportAt < PROGRESS_EVERY_MS) {
+    return;
+  }
+  const period = current ? ` · a decidir ${periodDebugLabel(current)}` : "";
+  emitProgress(
+    search.onProgress,
+    {
+      phase: "search",
+      message: `${formatElapsed(search.startedAt)} · ${search.visited.toLocaleString("pt-PT")} ramos · ${found.toLocaleString("pt-PT")} semanas · ${remainingPeriods} períodos por decidir${period}`,
+      found,
+      remainingPeriods,
+    },
+    search,
+  );
+}
 
 function kindFor(studentIds: string[]): VisitKind {
   return studentIds.length === 1 ? "one_on_one" : "group";
@@ -308,6 +393,7 @@ function search(
   creditedSubject: Record<string, Record<string, number>>,
   wallClock: number,
   found: Configuration[],
+  progress: SearchProgress | undefined,
 ): void {
   if (
     !canStillMeet(
@@ -320,6 +406,7 @@ function search(
       wallClock,
     )
   ) {
+    tickSearchProgress(progress, found.length, openIndexes.length);
     return;
   }
 
@@ -329,12 +416,14 @@ function search(
         toConfiguration(input, candidates, chosen, credited, wallClock),
       );
     }
+    tickSearchProgress(progress, found.length, 0);
     return;
   }
 
   const pick = pickMrvIndex(input, candidates, openIndexes, chosen);
   const rest = openIndexes.filter((index) => index !== pick);
   const candidate = candidates[pick];
+  tickSearchProgress(progress, found.length, rest.length, candidate);
 
   if (visitConflictsWithChosen(input, candidates, candidate, chosen)) {
     search(
@@ -346,6 +435,7 @@ function search(
       creditedSubject,
       wallClock,
       found,
+      progress,
     );
     return;
   }
@@ -371,6 +461,7 @@ function search(
       creditedSubject,
       wallClock + candidate.minutes,
       found,
+      progress,
     );
     chosen.pop();
     for (const studentId of studentIds) {
@@ -393,17 +484,51 @@ function search(
     creditedSubject,
     wallClock,
     found,
+    progress,
   );
 }
 
-export const enumerate: Enumerator = (input) => {
+export const enumerate: Enumerator = (input, onProgress) => {
+  const startedAt = Date.now();
+  emitProgress(onProgress, {
+    phase: "candidates",
+    message: "A construir tempos elegíveis…",
+  });
+
   if (input.caseload.length === 0) {
-    return {
+    const result = {
       configurations: [],
       infeasibleReasons: infeasibleReasons(input, buildCandidates(input)),
     };
+    emitProgress(onProgress, {
+      phase: "done",
+      message: `Concluído em ${formatElapsed(startedAt)}. Nenhuma semana possível.`,
+    });
+    return result;
   }
+
   const candidates = buildCandidates(input);
+  const progress: SearchProgress | undefined = onProgress
+    ? {
+        visited: 0,
+        lastReportAt: 0,
+        startedAt,
+        candidateCount: candidates.length,
+        onProgress,
+      }
+    : undefined;
+
+  emitProgress(
+    onProgress,
+    {
+      phase: "search",
+      message: `${candidates.length} tempos elegíveis. A procurar combinações… Isto pode demorar.`,
+      candidateCount: candidates.length,
+      remainingPeriods: candidates.length,
+    },
+    progress,
+  );
+
   const credited: Record<string, number> = {};
   const creditedSubject: Record<string, Record<string, number>> = {};
   for (const goal of input.caseload) {
@@ -422,16 +547,53 @@ export const enumerate: Enumerator = (input) => {
     creditedSubject,
     0,
     found,
+    progress,
   );
+
+  if (found.length > 0) {
+    emitProgress(
+      onProgress,
+      {
+        phase: "sort",
+        message: `A ordenar ${found.length.toLocaleString("pt-PT")} semanas…`,
+        found: found.length,
+        candidateCount: candidates.length,
+      },
+      progress,
+    );
+  }
 
   found.sort((a, b) => b.score - a.score || a.visits.length - b.visits.length);
 
   if (found.length === 0) {
-    return {
+    const result = {
       configurations: [],
       infeasibleReasons: infeasibleReasons(input, candidates),
     };
+    emitProgress(
+      onProgress,
+      {
+        phase: "done",
+        message: `Concluído em ${formatElapsed(startedAt)}. Nenhuma semana possível (${(progress?.visited ?? 0).toLocaleString("pt-PT")} ramos).`,
+        candidateCount: candidates.length,
+        visitedNodes: progress?.visited,
+      },
+      progress,
+    );
+    return result;
   }
+
+  emitProgress(
+    onProgress,
+    {
+      phase: "done",
+      message: `Concluído: ${found.length.toLocaleString("pt-PT")} semanas em ${formatElapsed(startedAt)} (${(progress?.visited ?? 0).toLocaleString("pt-PT")} ramos).`,
+      found: found.length,
+      candidateCount: candidates.length,
+      visitedNodes: progress?.visited,
+    },
+    progress,
+  );
 
   return { configurations: found, infeasibleReasons: [] };
 };

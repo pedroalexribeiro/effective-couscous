@@ -84,10 +84,40 @@ function DataToolbar({
   );
 }
 
+function calculationStatusText({
+  calculating,
+  hasResult,
+  configurations,
+  calculationIsStale,
+}: {
+  calculating: boolean;
+  hasResult: boolean;
+  configurations: { length: number };
+  calculationIsStale: boolean;
+}): string {
+  if (calculating) {
+    return "A calcular… Isto pode demorar. Não desligue o ecrã.";
+  }
+  if (!hasResult) {
+    return "Calcule as semanas possíveis quando os dados estiverem prontos.";
+  }
+  const count =
+    configurations.length === 1
+      ? "1 semana possível"
+      : `${configurations.length} semanas possíveis`;
+  return calculationIsStale ? `${count} (dados entretanto mudaram)` : count;
+}
+
 function Shell() {
   const [screen, setScreen] = useState<Screen>("schools");
   const { importJson } = useOrganizer();
-  const { configurations } = useConfigurations();
+  const {
+    configurations,
+    calculating,
+    hasResult,
+    calculate,
+    calculationIsStale,
+  } = useConfigurations();
   const fileRef = useRef<HTMLInputElement>(null);
   const narrow = useNarrowViewport();
 
@@ -100,11 +130,17 @@ function Shell() {
       <header className="topbar">
         <div>
           <h1>Organizador de aulas</h1>
-          <p className="hint">
-            {configurations.length === 1
-              ? "1 semana possível"
-              : `${configurations.length} semanas possíveis`}
+          <p className={`hint${calculating ? " busy" : ""}`}>
+            {calculationStatusText({
+              calculating,
+              hasResult,
+              configurations,
+              calculationIsStale,
+            })}
           </p>
+          <button type="button" onClick={calculate} disabled={calculating}>
+            {calculating ? "A calcular…" : "Calcular semanas"}
+          </button>
         </div>
         {narrow ? (
           <details className="toolbar-menu">
@@ -144,7 +180,11 @@ function Shell() {
             }}
           >
             {SCREEN_LABEL[id]}
-            {id === "configurations" ? ` (${configurations.length})` : ""}
+            {id === "configurations" && calculating
+              ? " …"
+              : id === "configurations" && hasResult
+                ? ` (${configurations.length})`
+                : ""}
           </button>
         ))}
       </nav>

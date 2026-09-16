@@ -103,5 +103,9 @@ export function organizerFromFileJson(raw: unknown): OrganizerInput {
     periods: (input.periods ?? []).map(periodFromFile),
     freeBlocks: (input.freeBlocks ?? []).map(freeBlockFromFile),
     caseload: (input.caseload ?? []).map(caseloadFromFile),
+    preferences: {
+      ...input.preferences,
+      preferredSubjects: input.preferences?.preferredSubjects ?? [],
+    },
   };
 }

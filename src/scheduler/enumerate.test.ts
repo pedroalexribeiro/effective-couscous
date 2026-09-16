@@ -103,9 +103,44 @@ describe("enumerate", () => {
     ]);
   });
 
+  it("ranks Portuguese ahead of Mathematics when it is preferred", () => {
+    const input = twoNonOverlappingPeriods();
+    input.caseload[0].requiredSubjects = ["Math", "Portuguese"];
+    input.preferences = {
+      ...input.preferences,
+      preferredSubjects: ["Portuguese"],
+    };
+    const result = enumerate(input);
+    const mathOnly = result.configurations.find(
+      (config) =>
+        config.visits.length === 1 && config.visits[0].periodId === "p-math-mon",
+    );
+    expect(result.configurations[0].visits.some((visit) => visit.periodId === "p-pt-tue")).toBe(
+      true,
+    );
+    expect(mathOnly).toBeDefined();
+    expect(result.configurations[0].score).toBeGreaterThan(mathOnly!.score);
+  });
+
   it("returns no week when the caseload is empty", () => {
     const result = enumerate(emptyOrganizerInput());
     expect(result.configurations).toHaveLength(0);
     expect(result.infeasibleReasons.length).toBeGreaterThan(0);
+  });
+
+  it("reports progress phases when a callback is given", () => {
+    const phases: string[] = [];
+    const messages: string[] = [];
+    enumerate(twoNonOverlappingPeriods(), (progress) => {
+      phases.push(progress.phase);
+      messages.push(progress.message);
+    });
+
+    expect(phases[0]).toBe("candidates");
+    expect(phases).toContain("search");
+    expect(phases.at(-1)).toBe("done");
+    expect(messages.some((message) => message.includes("tempos elegíveis"))).toBe(
+      true,
+    );
   });
 });

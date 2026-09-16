@@ -172,6 +172,76 @@ button.linkish {
   font-size: 0.9rem;
 }
 
+.hint.busy {
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+button:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+
+.calculation-panel {
+  margin: 0 0 1rem;
+}
+
+.calculating-banner {
+  background: #1f1f1f;
+  color: #f7f4ee;
+  padding: 0.85rem 1rem;
+  margin: 0 0 0.75rem;
+}
+
+.calculating-banner strong {
+  display: block;
+  margin-bottom: 0.25rem;
+}
+
+.calculating-banner p {
+  margin: 0;
+  color: #ddd6c8;
+  font-size: 0.9rem;
+}
+
+.calculate-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+
+.calculate-row .hint {
+  margin: 0;
+}
+
+.debug-log {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  background: #1b1b1b;
+  color: #c6e2a8;
+  padding: 0.75rem;
+  max-height: 14rem;
+  overflow: auto;
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.topbar > div > button {
+  margin-top: 0.35rem;
+}
+
 .plain-list {
   list-style: none;
   padding: 0;

@@ -54,6 +54,7 @@ export type FreeBlock = {
 export type Preferences = {
   preferredWeekdays: Weekday[];
   avoidedWeekdays: Weekday[];
+  preferredSubjects: string[];
   preferredTimeStartMinutes: number | null;
   preferredTimeEndMinutes: number | null;
   maxMinutesPerDay: number | null;
@@ -96,6 +97,7 @@ export const WEEKDAYS: Weekday[] = [1, 2, 3, 4, 5];
 export const EMPTY_PREFERENCES: Preferences = {
   preferredWeekdays: [],
   avoidedWeekdays: [],
+  preferredSubjects: [],
   preferredTimeStartMinutes: null,
   preferredTimeEndMinutes: null,
   maxMinutesPerDay: null,

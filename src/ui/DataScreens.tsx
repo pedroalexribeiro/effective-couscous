@@ -529,7 +529,11 @@ export function CaseloadScreen() {
           <input name="requiredMinutes" type="number" min={1} defaultValue={45} required />
         </Field>
         <Field label="Disciplinas (vírgula; vazio = qualquer)">
-          <input name="requiredSubjects" placeholder="Matemática, Português" />
+          <input
+            name="requiredSubjects"
+            placeholder="Matemática, Português"
+            defaultValue="Português, Matemática"
+          />
         </Field>
         <button type="submit">Adicionar à carga</button>
       </RowForm>
@@ -564,7 +568,7 @@ export function CaseloadScreen() {
 
 export function FreeBlocksScreen() {
   const { input, setInput } = useOrganizer();
-  const { configurations } = useConfigurations();
+  const { configurations, hasResult } = useConfigurations();
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -587,8 +591,14 @@ export function FreeBlocksScreen() {
     <section>
       <h2>Blocos livres</h2>
       <p className="hint">
-        Mantenha este intervalo livre. Semanas possíveis:{" "}
-        <strong>{configurations.length}</strong>
+        Mantenha este intervalo livre
+        {hasResult ? (
+          <>
+            . Semanas possíveis: <strong>{configurations.length}</strong>
+          </>
+        ) : (
+          "."
+        )}
       </p>
       <RowForm onSubmit={onSubmit}>
         <Field label="Dia da semana">

@@ -1,4 +1,4 @@
-import type { Weekday } from "./types.ts";
+import { WEEKDAYS, type Weekday } from "./types.ts";
 
 const WEEKDAY_LABELS: Record<Weekday, string> = {
   1: "Segunda",
@@ -8,8 +8,55 @@ const WEEKDAY_LABELS: Record<Weekday, string> = {
   5: "Sexta",
 };
 
+const WEEKDAY_ALIASES: Record<string, Weekday> = {
+  "1": 1,
+  monday: 1,
+  segunda: 1,
+  "segunda-feira": 1,
+  "2": 2,
+  tuesday: 2,
+  terca: 2,
+  "terca-feira": 2,
+  "3": 3,
+  wednesday: 3,
+  quarta: 3,
+  "quarta-feira": 3,
+  "4": 4,
+  thursday: 4,
+  quinta: 4,
+  "quinta-feira": 4,
+  "5": 5,
+  friday: 5,
+  sexta: 5,
+  "sexta-feira": 5,
+};
+
+function isWeekday(value: number): value is Weekday {
+  return WEEKDAYS.includes(value as Weekday);
+}
+
 export function weekdayLabel(day: Weekday): string {
   return WEEKDAY_LABELS[day];
+}
+
+/** Accepts 1–5, "5", "Sexta", "Friday", and similar labels. */
+export function parseWeekday(value: unknown): Weekday | null {
+  if (typeof value === "number" && isWeekday(value)) {
+    return value;
+  }
+  if (typeof value !== "string") {
+    return null;
+  }
+  const trimmed = value.trim();
+  const asNumber = Number(trimmed);
+  if (isWeekday(asNumber)) {
+    return asNumber;
+  }
+  const key = trimmed
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase();
+  return WEEKDAY_ALIASES[key] ?? null;
 }
 
 export function parseTimeToMinutes(value: string): number {

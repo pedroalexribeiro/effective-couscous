@@ -13,7 +13,14 @@ import {
 /** One way to spend a single weekday: a clash-free set of periods to attend. */
 export type DayPlan = {
   weekday: Weekday;
+  /** Chronological, which is the order the join has to apply them in. */
   candidateIndexes: number[];
+  /**
+   * What each period contributes, in the same order. These are shared
+   * references to one array per period, not copies.
+   */
+  steps: Int32Array[];
+  /** Uncapped total of `steps`, used only for optimistic bounds. */
   progress: Int32Array;
   minutes: number;
   score: number;
@@ -54,10 +61,16 @@ function planFrom(
   weekday: Weekday,
   chosen: number[],
 ): DayPlan {
+  const inTimeOrder = [...chosen].sort(
+    (left, right) =>
+      candidates[left].period.startMinutes -
+      candidates[right].period.startMinutes,
+  );
+
   const progress = emptyProgress(quotas);
   let minutes = 0;
 
-  for (const index of chosen) {
+  for (const index of inTimeOrder) {
     minutes += candidates[index].minutes;
     const contribution = perCandidateProgress[index];
     for (let quota = 0; quota < progress.length; quota += 1) {
@@ -67,13 +80,14 @@ function planFrom(
 
   return {
     weekday,
-    candidateIndexes: [...chosen],
+    candidateIndexes: inTimeOrder,
+    steps: inTimeOrder.map((index) => perCandidateProgress[index]),
     progress,
     minutes,
     score: scoreDay(
       input.preferences,
       travelBetween,
-      chosen.map((index) => candidates[index]),
+      inTimeOrder.map((index) => candidates[index]),
     ),
   };
 }

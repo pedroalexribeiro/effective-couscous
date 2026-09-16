@@ -327,11 +327,9 @@ That produces three kinds of visit:
 | `presence` | Nobody did — you are there only to reach your own required minutes. |
 
 A `presence` visit is an hour spent on nobody's behalf, so it only ever earns
-its place by lifting you to your own required total. It is not the search's job
-to forbid them — the score already makes them expensive (section 6), which is
-what keeps them out of the plans you are shown unless they are genuinely
-needed. If you see one in a recommended plan, removing it would drop you below
-your own minimum.
+its place by lifting you to your own required total. If you see one in a
+proposed plan, removing it would drop you below your own minimum — the rule in
+the next section guarantees it.
 
 This runs **after** the search, and it is safe to do so. During the search,
 progress is capped at each target, so crediting a student who is already
@@ -344,28 +342,64 @@ the order days are considered.
 
 ---
 
-## 11. Why the answers can be trusted
+## 11. No plan may waste an hour of your time
+
+A plan is only offered if **every period in it is load-bearing**: drop any one
+of them, and some requirement breaks. Plans that fail this are counted but
+never proposed.
+
+This matters more than it sounds. Meeting every target does not make a plan
+worth having — you can always attend an extra class on top of a working plan,
+and the result still meets every target. Those padded plans outnumber the real
+ones, and they are what put a pointless hour in front of you.
+
+The tempting shortcut is to reject a period the moment you reach it with
+nothing left to gain. That is not enough, and the reason is worth understanding.
+Suppose you need 1,100 minutes of attendance. On Monday you sit in a class no
+student needs, and at that point it genuinely counts — you are well short of
+1,100. But Thursday's classes, which students *do* need, then carry you past
+1,100 anyway. Monday's hour has become unnecessary, and nothing you could have
+known on Monday would have told you. **Necessity is a property of the finished
+plan, not of the moment you choose a period.**
+
+So the check happens once a plan is complete, which is cheap: only the plans
+being considered for the list are ever checked, and each check is one pass per
+period.
+
+One consequence is worth spelling out, because it shows up in the app. The
+number of possible plans and the number offered are different figures. For the
+real timetable, 2,437 combinations meet every target, but the ones offered are
+drawn only from those with nothing removable. Counting the offered plans exactly
+would mean listing all of them, which is not something the program can promise
+to do — see section 13.
+
+*Code: `src/scheduler/quotas.ts`, `everyPeriodIsNeeded`.*
+
+---
+
+## 12. Why the answers can be trusted
 
 Three things back this up.
 
-**It agrees with brute force.** `join.test.ts` counts valid plans the slow,
-obvious way — try every clash-free combination, keep the ones that meet every
-target — and checks the fast method against it on five different small
-timetables, comparing both the number of plans and the best score. A separate
-check confirmed the same agreement on a reduced slice of the real data: 310
-plans both ways.
+**It agrees with brute force.** `join.test.ts` works the answers out the slow,
+obvious way — try every clash-free combination and measure each one — then
+checks the fast method against it on five different small timetables. It
+compares the number of combinations that meet every target, the number actually
+offered, and the best score. The brute-force version deliberately shares no
+code with the real one: it decides whether a period is needed by dropping it and
+re-checking every requirement from scratch.
+
+**Nothing offered contains a removable period.** For each of those timetables,
+every plan the search returns is re-examined by the brute-force rule, so the
+guarantee in section 11 is checked against results rather than assumed.
 
 **The score is verified against itself.** Every returned plan's score is
 recompared against scoring its periods directly, so the per-day arithmetic used
 during the search cannot drift from the real scoring rule.
 
-**The real dataset is a test.** `realData.test.ts` runs the committed timetable
-and asserts the plan count, the ordering, and that every returned plan really
-gives every student their minutes and respects every subject split.
-
 ---
 
-## 12. Known limits
+## 13. Known limits
 
 **Very loose inputs are refused, not attempted.** If a single weekday has many
 periods that barely clash, the number of options for that day explodes. The
@@ -381,6 +415,11 @@ outright by another option on the same day.
 **The plan count is a plain number.** Beyond about nine quadrillion plans it
 would lose precision. No realistic timetable comes close.
 
+**The reported count includes plans that would never be offered.** It counts
+combinations meeting every target, which is more than the number with nothing
+removable (section 11). Counting the latter exactly would mean listing every
+plan, and there can be far too many to list.
+
 **Preference weights are not adjustable.** They are on one comparable scale
 (section 6) and hand-picked to sensible defaults, but changing them means
 editing `VALUE_PER_MINUTE` rather than a setting in the app.
@@ -391,27 +430,33 @@ pair, rather than a real school-to-school table.
 
 ---
 
-## 13. The real timetable, in numbers
+## 14. A real timetable, in numbers
 
-From `data/class-organizer.json`: 9 classes across 2 schools, 14 students
+Measured against a real caseload — 9 classes across 2 schools, 14 students
 needing 1,500 minutes between them, 1,100 minutes of attendance required of
-you, and 7 periods already covered by other professors.
+you, and 7 periods already covered by other professors. That timetable is
+personal data and is not part of this repository; the figures are recorded here
+instead.
 
 | | Before | Now |
 | --- | --- | --- |
-| Time to answer | 23.2 s | **0.5 s** |
+| Time to answer | 23.2 s | **0.6 s** |
 | Work done | 8,194,533 branches | 31,245 remembered situations |
-| Plans reported | 23,076 | **2,437** |
+| Combinations counted | 23,076 | **2,437** |
 | Hours asked of you by the best plan | 1,230 min | **1,140 min** |
+| Offered plans with a removable hour | 42 of 50 | **0 of 50** |
 
-The plan count changed because the old number was not a count of plans. It
+The count changed because the old number was not a count of plans at all. It
 counted the same set of periods once for every way of splitting students between
-them, while missing every plan that did more than the minimum. 2,437 is the
-number of genuinely different plans, and it is small enough to page through.
+them, while missing every plan that did more than the bare minimum.
 
-The last row is the effect of scoring your time as a cost (section 6). The old
-rule paid you per minute of a favourite subject with nothing on the other side
-of the ledger, so the plan it liked best was padded: 130 minutes above the 1,100
-required of you, including an hour of Portuguese that served no student at all.
-The best plan now comes in at 1,140 minutes, and its one presence visit is
+The last two rows are the point of sections 6 and 11. The old scoring paid you
+per minute of a favourite subject with nothing on the other side of the ledger,
+so the plan it liked best was padded: 130 minutes above the 1,100 required of
+you, including an hour of Portuguese that served no student. Pricing your time
+brought the best plan down to 1,140 minutes, but it only made padding
+unattractive — 9 of the 50 offered plans still carried a removable hour.
+Requiring every period to be load-bearing removed the last of them.
+
+The best plan now asks 1,140 minutes of you, and its single presence visit is
 there because without it you would fall to 1,090 — below your own minimum.

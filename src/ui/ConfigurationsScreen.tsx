@@ -1,11 +1,27 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type TouchEvent,
+} from "react";
 import {
   schoolNameById,
   turmaById,
   turmaLabel,
+  weekdayLabel,
 } from "../domain/index.ts";
-import type { CaseloadGoal, Configuration, OrganizerInput, Period, Visit } from "../domain/index.ts";
+import type {
+  CaseloadGoal,
+  Configuration,
+  OrganizerInput,
+  Period,
+  Visit,
+  Weekday,
+} from "../domain/index.ts";
 import { useConfigurations, useOrganizer } from "./OrganizerContext.tsx";
+import { horizontalSwipeDirection } from "./swipe.ts";
 import { WeekCalendar, type CalendarEvent } from "./WeekCalendar.tsx";
 
 function periodLookup(periods: Period[]): Map<string, Period> {
@@ -14,12 +30,38 @@ function periodLookup(periods: Period[]): Map<string, Period> {
 
 function weeksHint(shown: number, totalFound: number): string {
   if (totalFound > shown) {
-    return `${totalFound} semanas possíveis. A lista mostra as ${shown} melhores. As preferências só ordenam.`;
+    return `${totalFound} combinações cumprem todos os requisitos. A lista mostra as ${shown} sem tempos dispensáveis, melhores primeiro. As preferências só ordenam.`;
   }
   if (shown === 1) {
     return "1 semana possível. As preferências só ordenam esta lista.";
   }
-  return `${shown} semanas possíveis. As preferências só ordenam esta lista.`;
+  return `${shown} semanas possíveis, melhores primeiro. As preferências só ordenam esta lista.`;
+}
+
+function avoidedDayHint(
+  visits: Visit[],
+  periods: Map<string, Period>,
+  avoidedWeekdays: Weekday[],
+): string | null {
+  if (avoidedWeekdays.length === 0) {
+    return null;
+  }
+  const counts = new Map<Weekday, number>();
+  for (const visit of visits) {
+    const day = periods.get(visit.periodId)?.weekday;
+    if (day === undefined || !avoidedWeekdays.includes(day)) {
+      continue;
+    }
+    counts.set(day, (counts.get(day) ?? 0) + 1);
+  }
+  if (counts.size === 0) {
+    return null;
+  }
+  const parts = [...counts.entries()].map(([day, count]) => {
+    const aulas = count === 1 ? "1 aula" : `${count} aulas`;
+    return `${aulas} de ${weekdayLabel(day).toLowerCase()}`;
+  });
+  return `Ainda há ${parts.join(" e ")} porque a carga não fecha sem elas. Evitar um dia não dispensa tempos obrigatórios.`;
 }
 
 function formatGoalSplit(goal: CaseloadGoal): string {
@@ -47,12 +89,68 @@ export function ConfigurationsScreen() {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const selected = configurations[selectedIndex] ?? configurations[0] ?? null;
   const periods = useMemo(() => periodLookup(input.periods), [input.periods]);
+  const lastIndex = Math.max(0, configurations.length - 1);
+  const canGoPrev = selectedIndex > 0;
+  const canGoNext = selectedIndex < lastIndex;
+  const swipeStart = useRef<{ x: number; y: number } | null>(null);
+
+  const goPrev = useCallback(() => {
+    setSelectedIndex((index) => Math.max(0, index - 1));
+  }, []);
+
+  const goNext = useCallback(() => {
+    setSelectedIndex((index) => Math.min(lastIndex, index + 1));
+  }, [lastIndex]);
+
+  if (selectedIndex > lastIndex) {
+    setSelectedIndex(0);
+  }
 
   useEffect(() => {
-    if (selectedIndex >= configurations.length) {
-      setSelectedIndex(0);
+    function onKeyDown(event: KeyboardEvent) {
+      if (isTypingTarget(event.target) || configurations.length === 0) {
+        return;
+      }
+      if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        goPrev();
+      }
+      if (event.key === "ArrowRight") {
+        event.preventDefault();
+        goNext();
+      }
     }
-  }, [configurations.length, selectedIndex]);
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [configurations.length, goNext, goPrev]);
+
+  function onSwipeStart(event: TouchEvent<HTMLDivElement>) {
+    if (event.touches.length !== 1 || isInsideCalendar(event.target)) {
+      swipeStart.current = null;
+      return;
+    }
+    const touch = event.changedTouches[0];
+    swipeStart.current = { x: touch.clientX, y: touch.clientY };
+  }
+
+  function onSwipeEnd(event: TouchEvent<HTMLDivElement>) {
+    const start = swipeStart.current;
+    swipeStart.current = null;
+    if (!start) {
+      return;
+    }
+    const touch = event.changedTouches[0];
+    const direction = horizontalSwipeDirection(
+      touch.clientX - start.x,
+      touch.clientY - start.y,
+    );
+    if (direction === "left") {
+      goNext();
+    }
+    if (direction === "right") {
+      goPrev();
+    }
+  }
 
   return (
     <section>
@@ -78,31 +176,33 @@ export function ConfigurationsScreen() {
         </>
       ) : null}
       {configurations.length > 0 ? (
-        <>
+        <div
+          className="config-viewer"
+          onTouchStart={onSwipeStart}
+          onTouchEnd={onSwipeEnd}
+          onTouchCancel={() => {
+            swipeStart.current = null;
+          }}
+        >
           <p className="hint">
             {weeksHint(configurations.length, totalFound)}
             {calculationIsStale ? " Os dados mudaram desde este cálculo." : ""}
           </p>
-          <label className="field">
-            <span>Percorrer</span>
-            <select
-              value={selectedIndex}
-              onChange={(event) => setSelectedIndex(Number(event.target.value))}
-            >
-              {configurations.map((config, index) => (
-                <option key={index} value={index}>
-                  {`Semana ${index + 1} · ${config.visits.length} ${config.visits.length === 1 ? "visita" : "visitas"} · ${config.wallClockMinutes} min seus`}
-                </option>
-              ))}
-            </select>
-          </label>
-          {selected ? (
-            <ConfigurationDetail
-              configuration={selected}
-              periods={periods}
+          {configurations.length > 1 ? (
+            <ConfigurationPager
+              selectedIndex={selectedIndex}
+              count={configurations.length}
+              canGoPrev={canGoPrev}
+              canGoNext={canGoNext}
+              onPrev={goPrev}
+              onNext={goNext}
+              onSelect={setSelectedIndex}
             />
           ) : null}
-        </>
+          {selected ? (
+            <ConfigurationDetail configuration={selected} periods={periods} />
+          ) : null}
+        </div>
       ) : null}
     </section>
   );
@@ -143,7 +243,9 @@ function CalculationStatus({
           {calculating ? "A calcular…" : "Calcular semanas"}
         </button>
         {calculationIsStale ? (
-          <p className="hint">Os dados mudaram. Calcule de novo para atualizar a lista.</p>
+          <p className="hint">
+            Os dados mudaram. Calcule de novo para atualizar a lista.
+          </p>
         ) : null}
         {!hasResult && !calculating ? (
           <p className="hint">O cálculo só corre quando premir o botão.</p>
@@ -158,6 +260,60 @@ function CalculationStatus({
   );
 }
 
+function isTypingTarget(target: EventTarget | null): boolean {
+  return (
+    target instanceof HTMLInputElement ||
+    target instanceof HTMLSelectElement ||
+    target instanceof HTMLTextAreaElement
+  );
+}
+
+function isInsideCalendar(target: EventTarget | null): boolean {
+  return target instanceof Element && target.closest(".calendar-week") !== null;
+}
+
+function ConfigurationPager({
+  selectedIndex,
+  count,
+  canGoPrev,
+  canGoNext,
+  onPrev,
+  onNext,
+  onSelect,
+}: {
+  selectedIndex: number;
+  count: number;
+  canGoPrev: boolean;
+  canGoNext: boolean;
+  onPrev: () => void;
+  onNext: () => void;
+  onSelect: (index: number) => void;
+}) {
+  return (
+    <div className="config-pager" role="group" aria-label="Percorrer semanas">
+      <button type="button" onClick={onPrev} disabled={!canGoPrev}>
+        ← Anterior
+      </button>
+      <label className="config-pager-status">
+        <span className="visually-hidden">Ir para</span>
+        <select
+          value={selectedIndex}
+          onChange={(event) => onSelect(Number(event.target.value))}
+        >
+          {Array.from({ length: count }, (_, index) => (
+            <option key={index} value={index}>
+              {`Semana ${index + 1} de ${count}`}
+            </option>
+          ))}
+        </select>
+      </label>
+      <button type="button" onClick={onNext} disabled={!canGoNext}>
+        Seguinte →
+      </button>
+    </div>
+  );
+}
+
 function ConfigurationDetail({
   configuration,
   periods,
@@ -166,26 +322,39 @@ function ConfigurationDetail({
   periods: Map<string, Period>;
 }) {
   const { input } = useOrganizer();
+  const avoidedHint = avoidedDayHint(
+    configuration.visits,
+    periods,
+    input.preferences.avoidedWeekdays,
+  );
 
   return (
     <div>
-      <p>
-        O seu tempo: <strong>{configuration.wallClockMinutes} min</strong> (precisa de{" "}
-        {input.requiredTotalMinutes})
-      </p>
-      <ul className="plain-list">
-        {input.caseload.map((goal) => {
-          const student = input.students.find((item) => item.id === goal.studentId);
-          const got = configuration.studentMinutes[goal.studentId] ?? 0;
-          return (
-            <li key={goal.studentId}>
-              {student?.name ?? goal.studentId}: {got} / {goal.requiredMinutes} min
-              {formatGoalSplit(goal)}
-            </li>
-          );
-        })}
-      </ul>
-      <WeekCalendar events={visitCalendarEvents(configuration.visits, periods, input)} />
+      <WeekCalendar
+        events={visitCalendarEvents(configuration.visits, periods, input)}
+      />
+      <div className="config-summary">
+        {avoidedHint ? <p className="hint">{avoidedHint}</p> : null}
+        <p>
+          O seu tempo: <strong>{configuration.wallClockMinutes} min</strong>{" "}
+          (precisa de {input.requiredTotalMinutes})
+        </p>
+        <ul className="plain-list">
+          {input.caseload.map((goal) => {
+            const student = input.students.find(
+              (item) => item.id === goal.studentId,
+            );
+            const got = configuration.studentMinutes[goal.studentId] ?? 0;
+            return (
+              <li key={goal.studentId}>
+                {student?.name ?? goal.studentId}: {got} /{" "}
+                {goal.requiredMinutes} min
+                {formatGoalSplit(goal)}
+              </li>
+            );
+          })}
+        </ul>
+      </div>
     </div>
   );
 }

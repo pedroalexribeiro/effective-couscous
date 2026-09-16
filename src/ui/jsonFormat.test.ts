@@ -21,9 +21,16 @@ describe("jsonFormat", () => {
     });
   });
 
-  it("still reads the old startMinutes format", () => {
-    const parsed = organizerFromFileJson(sampleWeek());
-    expect(parsed.periods[0].startMinutes).toBe(9 * 60);
-    expect(parsed.periods[0].endMinutes).toBe(9 * 60 + 45);
+  it("reads weekday names in preferences as 1–5", () => {
+    const parsed = organizerFromFileJson({
+      ...organizerToFileJson(sampleWeek()),
+      preferences: {
+        preferredWeekdays: ["Segunda", "Terça"],
+        avoidedWeekdays: ["Sexta"],
+        preferredSubjects: ["Português"],
+      },
+    });
+    expect(parsed.preferences.preferredWeekdays).toEqual([1, 2]);
+    expect(parsed.preferences.avoidedWeekdays).toEqual([5]);
   });
 });

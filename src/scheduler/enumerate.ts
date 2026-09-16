@@ -16,7 +16,12 @@ import {
   type DayPlan,
 } from "./dayPlans.ts";
 import { createJoin, selectBestCombinations } from "./join.ts";
-import { buildQuotas, emptyProgress, type Quotas } from "./quotas.ts";
+import {
+  buildQuotas,
+  emptyProgress,
+  everyPeriodIsNeeded,
+  type Quotas,
+} from "./quotas.ts";
 import { buildVisits } from "./visits.ts";
 
 export type EnumerateProgress = {
@@ -32,8 +37,6 @@ export type Enumerator = (
   input: OrganizerInput,
   onProgress?: (progress: EnumerateProgress) => void,
 ) => EnumerateResult;
-
-const MAX_KEPT_CONFIGURATIONS = 50;
 
 function weekWord(count: number): string {
   return count === 1 ? "semana" : "semanas";
@@ -95,10 +98,7 @@ function inputProblems(input: OrganizerInput): string[] {
  * already accounting for periods that clash within a day, so a shortfall here
  * is proof that no week exists.
  */
-function unreachableQuotas(
-  quotas: Quotas,
-  capacity: Int32Array[],
-): string[] {
+function unreachableQuotas(quotas: Quotas, capacity: Int32Array[]): string[] {
   const reasons: string[] = [];
   for (let quota = 0; quota < quotas.caps.length; quota += 1) {
     const available = capacity[0][quota];
@@ -202,7 +202,7 @@ export const enumerate: Enumerator = (input, onProgress) => {
 
   report(
     "sort",
-    `${formatCount(whole.count)} ${weekWord(whole.count)} possíveis. A escolher as melhores…`,
+    `${formatCount(whole.count)} ${weekWord(whole.count)} possíveis. A ordenar…`,
     {
       candidateCount: candidates.length,
       statesExplored: join.statesCached(),
@@ -210,11 +210,16 @@ export const enumerate: Enumerator = (input, onProgress) => {
     },
   );
 
+  const stepsOf = (planIndexes: number[]): Int32Array[] =>
+    planIndexes.flatMap(
+      (planIndex, day) => dayPlans.byWeekday[day][planIndex].steps,
+    );
+
   const configurations = selectBestCombinations(
     quotas,
     dayPlans.byWeekday,
     join,
-    MAX_KEPT_CONFIGURATIONS,
+    (planIndexes) => everyPeriodIsNeeded(quotas, stepsOf(planIndexes)),
   ).map((combination) =>
     toConfiguration(
       quotas,
@@ -225,9 +230,9 @@ export const enumerate: Enumerator = (input, onProgress) => {
 
   report(
     "done",
-    `Concluído: ${formatCount(whole.count)} ${weekWord(whole.count)} em ${elapsedSince(startedAt)}${
+    `Concluído: ${formatCount(configurations.length)} ${weekWord(configurations.length)} em ${elapsedSince(startedAt)}${
       whole.count > configurations.length
-        ? ` · a mostrar as ${configurations.length} melhores`
+        ? ` · ${formatCount(whole.count)} no total, as outras têm tempos dispensáveis`
         : ""
     }.`,
     {

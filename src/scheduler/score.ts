@@ -21,15 +21,24 @@ export type ScorablePeriod = {
  * `yourTime` is what stops the search padding a plan. Because the giveback a
  * minute can earn (50 + 25 + 15 = 90) is always less than the 100 it costs,
  * attending a period you do not need can never improve a plan's score.
+ *
+ * Avoiding a weekday is stronger than the other bonuses so a favourite
+ * subject cannot make a class on that day look cheaper than the same class
+ * on a normal day. Each avoided-day period also pays a flat charge, so two
+ * short classes there rank below one longer class of equal duration.
  */
 export const VALUE_PER_MINUTE = {
   yourTime: -100,
   preferredSubject: 50,
   preferredWeekday: 25,
-  avoidedWeekday: -25,
+  avoidedWeekday: -80,
   preferredHours: 15,
   travelling: -100,
   overDailyMaximum: -100,
+} as const;
+
+export const VALUE_PER_PERIOD = {
+  avoidedWeekday: -1000,
 } as const;
 
 function sitsInPreferredHours(
@@ -111,6 +120,9 @@ export function scoreDay(
 
   for (const candidate of periods) {
     value += valuePerMinuteOf(prefs, candidate.period) * candidate.minutes;
+    if (prefs.avoidedWeekdays.includes(candidate.period.weekday)) {
+      value += VALUE_PER_PERIOD.avoidedWeekday;
+    }
     dayMinutes += candidate.minutes;
   }
 

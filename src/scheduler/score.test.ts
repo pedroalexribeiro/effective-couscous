@@ -3,7 +3,12 @@ import { EMPTY_PREFERENCES } from "../domain/index.ts";
 import type { Preferences } from "../domain/index.ts";
 import { enumerate } from "./enumerate.ts";
 import { twoNonOverlappingPeriods } from "./fixtures.ts";
-import { VALUE_PER_MINUTE, scoreDay, type ScorablePeriod } from "./score.ts";
+import {
+  VALUE_PER_MINUTE,
+  VALUE_PER_PERIOD,
+  scoreDay,
+  type ScorablePeriod,
+} from "./score.ts";
 
 const noTravel = () => 0;
 
@@ -14,15 +19,16 @@ function prefs(overrides: Partial<Preferences> = {}): Preferences {
 function period(
   overrides: Partial<ScorablePeriod["period"]> = {},
 ): ScorablePeriod {
+  const details = {
+    weekday: 1 as const,
+    startMinutes: 9 * 60,
+    endMinutes: 10 * 60,
+    subject: "Math",
+    ...overrides,
+  };
   return {
-    period: {
-      weekday: 1,
-      startMinutes: 9 * 60,
-      endMinutes: 10 * 60,
-      subject: "Math",
-      ...overrides,
-    },
-    minutes: 60,
+    period: details,
+    minutes: details.endMinutes - details.startMinutes,
     schoolId: "school-1",
   };
 }
@@ -109,18 +115,80 @@ describe("scoreDay", () => {
       VALUE_PER_MINUTE.yourTime * 60 + VALUE_PER_MINUTE.overDailyMaximum * 15,
     );
   });
+
+  it("still prefers a normal day over an avoided day with a favourite subject", () => {
+    const monday = [period({ weekday: 1, subject: "Math" })];
+    const fridayFavourite = [
+      period({ weekday: 5, subject: "Portuguese" }),
+    ];
+    const ranked = prefs({
+      avoidedWeekdays: [5],
+      preferredSubjects: ["Portuguese"],
+    });
+
+    expect(scoreDay(ranked, noTravel, monday)).toBeGreaterThan(
+      scoreDay(ranked, noTravel, fridayFavourite),
+    );
+  });
+
+  it("ranks two short avoided-day classes below one longer class there", () => {
+    const oneLongFriday = [
+      period({ weekday: 5, startMinutes: 9 * 60, endMinutes: 10 * 60 + 30 }),
+    ];
+    const twoShortFridays = [
+      period({ weekday: 5, startMinutes: 9 * 60, endMinutes: 9 * 60 + 45 }),
+      period({ weekday: 5, startMinutes: 11 * 60, endMinutes: 11 * 60 + 45 }),
+    ];
+    const avoided = prefs({ avoidedWeekdays: [5] });
+
+    expect(scoreDay(avoided, noTravel, oneLongFriday)).toBeGreaterThan(
+      scoreDay(avoided, noTravel, twoShortFridays),
+    );
+    expect(scoreDay(avoided, noTravel, twoShortFridays)).toBe(
+      scoreDay(avoided, noTravel, oneLongFriday) + VALUE_PER_PERIOD.avoidedWeekday,
+    );
+  });
 });
 
 describe("ranking", () => {
-  it("puts the plan that meets the targets ahead of one that overshoots", () => {
+  it("prefers the favourite subject between two plans of equal length", () => {
     const input = twoNonOverlappingPeriods();
     input.preferences = prefs({ preferredSubjects: ["Portuguese"] });
 
-    const [best, ...rest] = enumerate(input).configurations;
+    const [best] = enumerate(input).configurations;
 
-    // Either period alone clears Ana's 45 minutes, so attending both is pure
-    // waste — even though the second one is her favourite subject.
-    expect(best.visits).toHaveLength(1);
-    expect(rest.at(-1)?.visits).toHaveLength(2);
+    // Both plans ask one 45-minute period of you, so the preference decides.
+    expect(best.visits.map((visit) => visit.periodId)).toEqual(["p-pt-tue"]);
+  });
+
+  it("ranks the week with the fewest classes on an avoided weekday first", () => {
+    const input = twoNonOverlappingPeriods();
+    input.requiredTotalMinutes = 90;
+    input.caseload = [
+      {
+        studentId: "ana",
+        requiredMinutes: 90,
+        requiredSubjects: [],
+        subjectMinutes: {},
+      },
+    ];
+    input.periods.push({
+      id: "p-sci-fri",
+      turmaId: "turma-5a",
+      weekday: 5,
+      startMinutes: 9 * 60,
+      endMinutes: 9 * 60 + 45,
+      subject: "Portuguese",
+    });
+    input.preferences = prefs({
+      avoidedWeekdays: [5],
+      preferredSubjects: ["Portuguese"],
+    });
+
+    const [best] = enumerate(input).configurations;
+    expect(best.visits.map((visit) => visit.periodId).sort()).toEqual([
+      "p-math-mon",
+      "p-pt-tue",
+    ]);
   });
 });

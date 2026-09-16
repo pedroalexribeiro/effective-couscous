@@ -25,3 +25,6 @@ tmp
 *.sw?
 tsconfig.tsbuildinfo
 node_modules/.tmp
+
+# Real timetables name children and the support they receive. Keep them local.
+data/

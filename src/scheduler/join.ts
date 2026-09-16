@@ -1,10 +1,5 @@
 import type { DayPlan } from "./dayPlans.ts";
-import {
-  addCapped,
-  quotaCount,
-  stateKey,
-  type Quotas,
-} from "./quotas.ts";
+import { addCapped, quotaCount, stateKey, type Quotas } from "./quotas.ts";
 
 /** What the days from some point onwards can still do, given progress so far. */
 export type JoinStats = {
@@ -30,7 +25,7 @@ const PROGRESS_EVERY_STATES = 2000;
 /**
  * Joins the independent weekdays back into whole weeks.
  *
- * The search abandons a branch on exactly two grounds:
+ * The search abandons a branch on exactly three grounds:
  *
  *  - impossible: the days left cannot deliver enough of some quota, so no
  *    completion exists. `remainingCapacity` gives the optimistic best case,
@@ -140,32 +135,21 @@ function isBetter(left: Combination, right: Combination): boolean {
 }
 
 /**
- * The best `limit` whole weeks, highest score first, ties broken by using
- * fewer periods.
+ * Every week that is worth proposing, highest score first, ties broken by
+ * using fewer periods.
  *
- * Only `limit` results are ever held in memory. The join's exact best-score
- * lookup turns this into a guided walk rather than a scan of every week.
+ * The join's exact remaining-count lookup skips days that cannot finish.
+ * `worthProposing` gets the last word on a finished week, so padded weeks
+ * never enter the list.
  */
 export function selectBestCombinations(
   quotas: Quotas,
   plansByWeekday: DayPlan[][],
   join: Join,
-  limit: number,
+  worthProposing: (planIndexes: number[]) => boolean,
 ): Combination[] {
-  const best: Combination[] = [];
+  const found: Combination[] = [];
   const dayCount = plansByWeekday.length;
-
-  const offer = (candidate: Combination): void => {
-    best.push(candidate);
-    best.sort((left, right) => (isBetter(left, right) ? -1 : 1));
-    if (best.length > limit) {
-      best.length = limit;
-    }
-  };
-
-  /** Score that a new week must beat; nothing to beat until the list is full. */
-  const threshold = (): number =>
-    best.length < limit ? Number.NEGATIVE_INFINITY : best[best.length - 1].score;
 
   const walk = (
     day: number,
@@ -175,35 +159,24 @@ export function selectBestCombinations(
     picks: number[],
   ): void => {
     if (day === dayCount) {
-      offer({ planIndexes: [...picks], score, periodCount });
+      if (worthProposing(picks)) {
+        found.push({ planIndexes: [...picks], score, periodCount });
+      }
       return;
     }
 
-    const options = plansByWeekday[day]
-      .map((plan, planIndex) => {
-        const next = addCapped(quotas, state, plan.progress);
-        return { plan, planIndex, next, rest: join.from(day + 1, next) };
-      })
-      .filter((option) => option.rest.count > 0)
-      .map((option) => ({
-        ...option,
-        // Exact, not an estimate: the join knows the best the rest can add.
-        reachable: score + option.plan.score + option.rest.bestScore,
-      }))
-      .sort((left, right) => right.reachable - left.reachable);
-
-    for (const option of options) {
-      // Equal scores still compete on period count, so only a strictly worse
-      // ceiling is safe to skip.
-      if (option.reachable < threshold()) {
-        break;
+    for (let planIndex = 0; planIndex < plansByWeekday[day].length; planIndex += 1) {
+      const plan = plansByWeekday[day][planIndex];
+      const next = addCapped(quotas, state, plan.progress);
+      if (join.from(day + 1, next).count === 0) {
+        continue;
       }
-      picks.push(option.planIndex);
+      picks.push(planIndex);
       walk(
         day + 1,
-        option.next,
-        score + option.plan.score,
-        periodCount + option.plan.candidateIndexes.length,
+        next,
+        score + plan.score,
+        periodCount + plan.candidateIndexes.length,
         picks,
       );
       picks.pop();
@@ -211,5 +184,6 @@ export function selectBestCombinations(
   };
 
   walk(0, new Int32Array(quotaCount(quotas)), 0, 0, []);
-  return best;
+  found.sort((left, right) => (isBetter(left, right) ? -1 : 1));
+  return found;
 }

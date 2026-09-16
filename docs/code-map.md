@@ -25,9 +25,9 @@ In the order the search uses them:
 
 | File | Responsibility |
 | --- | --- |
-| `candidates.ts` | Narrows the timetable to eligible periods, and works out which pairs clash. |
-| `quotas.ts` | The list of minute targets, and progress towards them (capped at each target). |
-| `score.ts` | Preference scoring for one day. A week's score is the sum of its days. |
+| `candidates.ts` | Narrows the timetable to eligible periods, works out which pairs clash, and looks up travel time. |
+| `quotas.ts` | The list of minute targets, progress towards them (capped at each target), and whether a finished plan has a removable period. |
+| `score.ts` | Preference scoring for one day, priced in minutes of your own time. A week's score is the sum of its days. |
 | `dayPlans.ts` | Every clash-free set of periods for a single weekday, plus how much each could still contribute. |
 | `join.ts` | Joins the five days into whole weeks: counts them, and walks to the best 50. |
 | `visits.ts` | Decides who you work with in each chosen period. |
@@ -63,14 +63,18 @@ list of concrete options.
 
 | File | Covers |
 | --- | --- |
-| `scheduler/join.test.ts` | Agreement with brute force, and score consistency. |
+| `scheduler/join.test.ts` | Agreement with brute force, that nothing offered has a removable period, and score consistency. |
+| `scheduler/score.test.ts` | That preferences stay on one scale, and that an extra period can never improve a day. |
 | `scheduler/dayPlans.test.ts` | Weekday independence, and that clashing periods never share a plan. |
 | `scheduler/enumerate.test.ts` | End-to-end behaviour, visit kinds, and the reported reasons when nothing is possible. |
-| `scheduler/realData.test.ts` | The committed real timetable. |
 | `domain/caseload.test.ts` | Subject split reading. |
 | `ui/calendarLayout.test.ts`, `ui/jsonFormat.test.ts` | Calendar placement and the file format. |
 
 Run them with `npm test`. The whole suite takes a few seconds.
+
+Tests use only hand-built inputs from `fixtures.ts`. Nothing under `data/` is
+part of the repository: a real timetable names children and what support they
+receive, so it stays on your machine and is git-ignored.
 
 ## Known rough edges
 
@@ -80,4 +84,6 @@ Run them with `npm test`. The whole suite takes a few seconds.
 - `enumerate.ts` still builds its own Portuguese progress strings. Emitting
   structured progress and letting the UI phrase it would separate the two
   concerns properly.
-- Preference weights are hard-coded and not on comparable scales.
+- Preference weights are hard-coded in `score.ts` rather than being settings.
+- The reported plan count includes combinations that would never be offered,
+  because the offered ones cannot be counted without listing them.

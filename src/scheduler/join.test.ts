@@ -9,48 +9,99 @@ import {
 import { enumerate } from "./enumerate.ts";
 import { scoreWeek } from "./score.ts";
 import {
-  addCapped,
   allQuotasMet,
   buildQuotas,
   candidateProgress,
   emptyProgress,
+  type Quotas,
 } from "./quotas.ts";
+import type { CandidatePeriod } from "./candidates.ts";
 
 /**
- * Counts valid weeks the slow, obvious way: try every clash-free set of
- * periods and keep the ones that meet every target. Exponential, so only
- * usable on small inputs — which is exactly what makes it a good oracle.
+ * Whether a set of periods is a plan worth proposing: every target met, and
+ * no period in it that you had stopped needing by the time it came round.
+ *
+ * Written out the long way on purpose. This is the oracle the fast path is
+ * measured against, so it deliberately shares no logic with it.
  */
-function bruteForceCount(input: OrganizerInput): {
-  count: number;
+function isWorthProposing(quotas: Quotas, chosen: CandidatePeriod[]): boolean {
+  const steps = chosen.map((candidate) => candidateProgress(quotas, candidate));
+
+  const state = emptyProgress(quotas);
+  for (const step of steps) {
+    for (let quota = 0; quota < state.length; quota += 1) {
+      state[quota] = Math.min(quotas.caps[quota], state[quota] + step[quota]);
+    }
+  }
+  if (!allQuotasMet(quotas, state)) {
+    return false;
+  }
+
+  // Drop each period in turn; the plan is only worth proposing if every one of
+  // those smaller plans breaks a requirement.
+  return steps.every((dropped) => {
+    const without = emptyProgress(quotas);
+    for (const step of steps) {
+      if (step === dropped) {
+        continue;
+      }
+      for (let quota = 0; quota < without.length; quota += 1) {
+        without[quota] = Math.min(
+          quotas.caps[quota],
+          without[quota] + step[quota],
+        );
+      }
+    }
+    return !allQuotasMet(quotas, without);
+  });
+}
+
+function meetsEveryTarget(quotas: Quotas, chosen: CandidatePeriod[]): boolean {
+  const state = emptyProgress(quotas);
+  for (const candidate of chosen) {
+    const step = candidateProgress(quotas, candidate);
+    for (let quota = 0; quota < state.length; quota += 1) {
+      state[quota] = Math.min(quotas.caps[quota], state[quota] + step[quota]);
+    }
+  }
+  return allQuotasMet(quotas, state);
+}
+
+/**
+ * Works out the answers the slow, obvious way: try every clash-free set of
+ * periods and measure them. Exponential, so only usable on small inputs —
+ * which is exactly what makes it a good oracle.
+ *
+ * The two counts are deliberately different things. `meetingEveryTarget` is
+ * what the join counts, and is what gets reported as the number of possible
+ * plans. `worthProposing` is the subset with no removable period, and is what
+ * actually gets offered.
+ */
+function bruteForce(input: OrganizerInput): {
+  meetingEveryTarget: number;
+  worthProposing: number;
   bestScore: number;
 } {
   const candidates = buildCandidates(input);
   const conflicts = buildConflictMatrix(input, candidates);
   const quotas = buildQuotas(input);
-  const progressPerCandidate = candidates.map((candidate) =>
-    candidateProgress(quotas, candidate),
-  );
 
-  let count = 0;
+  let meetingEveryTarget = 0;
+  let worthProposing = 0;
   let bestScore = Number.NEGATIVE_INFINITY;
   const chosen: number[] = [];
 
   const walk = (position: number): void => {
     if (position === candidates.length) {
-      let state = emptyProgress(quotas);
-      for (const index of chosen) {
-        state = addCapped(quotas, state, progressPerCandidate[index]);
+      const periods = chosen.map((index) => candidates[index]);
+      if (meetsEveryTarget(quotas, periods)) {
+        meetingEveryTarget += 1;
       }
-      if (allQuotasMet(quotas, state)) {
-        count += 1;
+      if (isWorthProposing(quotas, periods)) {
+        worthProposing += 1;
         bestScore = Math.max(
           bestScore,
-          scoreWeek(
-            input.preferences,
-            createTravelLookup(input),
-            chosen.map((index) => candidates[index]),
-          ),
+          scoreWeek(input.preferences, createTravelLookup(input), periods),
         );
       }
       return;
@@ -65,7 +116,7 @@ function bruteForceCount(input: OrganizerInput): {
   };
 
   walk(0);
-  return { count, bestScore };
+  return { meetingEveryTarget, worthProposing, bestScore };
 }
 
 function week(options: {
@@ -174,11 +225,30 @@ describe("the join agrees with brute force", () => {
   for (const { name, options } of cases) {
     it(`counts and ranks correctly: ${name}`, () => {
       const input = week(options);
-      const expected = bruteForceCount(input);
+      const expected = bruteForce(input);
       const result = enumerate(input);
 
-      expect(result.totalFound).toBe(expected.count);
+      expect(result.totalFound).toBe(expected.meetingEveryTarget);
+      expect(result.configurations).toHaveLength(expected.worthProposing);
       expect(result.configurations[0].score).toBe(expected.bestScore);
+    });
+
+    it(`offers nothing with a removable period: ${name}`, () => {
+      const input = week(options);
+      const quotas = buildQuotas(input);
+      const byId = new Map(
+        buildCandidates(input).map((candidate) => [
+          candidate.period.id,
+          candidate,
+        ]),
+      );
+
+      for (const configuration of enumerate(input).configurations) {
+        const chosen = configuration.visits.map((visit) =>
+          byId.get(visit.periodId)!,
+        );
+        expect(isWorthProposing(quotas, chosen)).toBe(true);
+      }
     });
   }
 

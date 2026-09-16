@@ -10,6 +10,7 @@ import {
 } from "./DataScreens.tsx";
 import { ConfigurationsScreen } from "./ConfigurationsScreen.tsx";
 import { OrganizerProvider, useConfigurations, useOrganizer } from "./OrganizerContext.tsx";
+import { PreferencesScreen } from "./PreferencesScreen.tsx";
 
 const SCREENS = [
   "schools",
@@ -19,6 +20,7 @@ const SCREENS = [
   "assistance",
   "caseload",
   "free-blocks",
+  "preferences",
   "configurations",
 ] as const;
 
@@ -32,6 +34,7 @@ const SCREEN_LABEL: Record<Screen, string> = {
   assistance: "Outros professores",
   caseload: "A minha carga",
   "free-blocks": "Blocos livres",
+  preferences: "Preferências",
   configurations: "Configurações",
 };
 
@@ -199,6 +202,7 @@ function Shell() {
         {screen === "assistance" ? <AssistanceScreen /> : null}
         {screen === "caseload" ? <CaseloadScreen /> : null}
         {screen === "free-blocks" ? <FreeBlocksScreen /> : null}
+        {screen === "preferences" ? <PreferencesScreen /> : null}
         {screen === "configurations" ? <ConfigurationsScreen /> : null}
       </main>
     </div>

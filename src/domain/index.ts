@@ -24,9 +24,11 @@ export {
   intervalsOverlap,
   minutesToTime,
   parseTimeToMinutes,
+  parseWeekday,
   periodDuration,
   weekdayLabel,
 } from "./time.ts";
+export { normalizePreferences } from "./preferences.ts";
 export { effectiveSubjectMinutes } from "./caseload.ts";
 export {
   schoolNameById,

@@ -257,6 +257,102 @@ button:disabled {
   border-top: 1px solid #e4dfd5;
 }
 
+.config-pager {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 0.5rem;
+  align-items: center;
+  margin: 0 0 0.75rem;
+  user-select: none;
+}
+
+.config-pager-status {
+  margin: 0;
+  min-width: 0;
+}
+
+.config-pager-status select {
+  width: 100%;
+  min-height: 2.5rem;
+  padding: 0.35rem 0.45rem;
+  border: 1px solid #c9c4ba;
+  background: #fff;
+  font-size: 1rem;
+  text-align: center;
+  text-align-last: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.config-pager button:disabled {
+  cursor: default;
+}
+
+.config-viewer .calendar-week {
+  margin-top: 0;
+}
+
+.config-summary {
+  margin-top: 1rem;
+}
+
+.prefs-block {
+  margin: 0 0 1.25rem;
+}
+
+.weekday-prefs {
+  margin: 0.35rem 0 0;
+}
+
+.weekday-pref {
+  margin: 0;
+  padding: 0.55rem 0;
+  border-top: 1px solid #e4dfd5;
+  display: grid;
+  grid-template-columns: 6.5rem minmax(0, 1fr);
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.weekday-pref-day {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.weekday-pref-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.85rem;
+}
+
+.weekday-pref-options label,
+.check-list label {
+  display: flex;
+  gap: 0.35rem;
+  align-items: center;
+  font-size: 0.9rem;
+}
+
+.check-list {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1rem;
+  padding: 0;
+  margin: 0.35rem 0 0;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .calendar-filter {
   margin-top: 1rem;
   max-width: 18rem;
@@ -509,6 +605,16 @@ button:disabled {
     justify-content: space-between;
   }
 
+  .config-pager button {
+    min-width: 0;
+    padding-left: 0.65rem;
+    padding-right: 0.65rem;
+  }
+
+  .config-pager-status select {
+    min-height: 2.75rem;
+  }
+
   .field,
   .field input,
   .field select,
@@ -516,6 +622,11 @@ button:disabled {
     width: 100%;
     max-width: none;
     min-width: 0;
+  }
+
+  .weekday-pref {
+    grid-template-columns: 1fr;
+    gap: 0.3rem;
   }
 
   .calendar-week-head,

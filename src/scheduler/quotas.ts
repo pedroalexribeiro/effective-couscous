@@ -41,7 +41,10 @@ export function buildQuotas(input: OrganizerInput): Quotas {
     for (const [subject, minutes] of Object.entries(
       effectiveSubjectMinutes(goal),
     )) {
-      subjectByStudent.set(subjectQuotaKey(goal.studentId, subject), caps.length);
+      subjectByStudent.set(
+        subjectQuotaKey(goal.studentId, subject),
+        caps.length,
+      );
       caps.push(minutes);
       labels.push(`${nameOf(goal.studentId)} (${subject})`);
     }
@@ -103,12 +106,39 @@ export function addCapped(
 ): Int32Array {
   const next = new Int32Array(state.length);
   for (let index = 0; index < state.length; index += 1) {
-    next[index] = Math.min(
-      quotas.caps[index],
-      state[index] + progress[index],
-    );
+    next[index] = Math.min(quotas.caps[index], state[index] + progress[index]);
   }
   return next;
+}
+
+/**
+ * Whether every period in a plan is pulling its weight: dropping any single
+ * one of them would leave some requirement unmet.
+ *
+ * Without this, a plan can contain an hour you did not need. The obvious case
+ * is a period no student needed that also was not needed to reach your own
+ * total — but it is not always obvious from the period itself. A class you sit
+ * in on Monday genuinely counts towards your required minutes at the time,
+ * and only turns out to have been unnecessary once Thursday's periods push you
+ * past the total anyway. Necessity is a property of the whole plan, so it can
+ * only be judged once the plan is complete.
+ *
+ * `steps` is what each period contributes, uncapped; order does not matter.
+ */
+export function everyPeriodIsNeeded(
+  quotas: Quotas,
+  steps: Int32Array[],
+): boolean {
+  const totals = new Int32Array(quotaCount(quotas));
+  for (const step of steps) {
+    for (let index = 0; index < totals.length; index += 1) {
+      totals[index] += step[index];
+    }
+  }
+
+  return steps.every((step) =>
+    totals.some((total, index) => total - step[index] < quotas.caps[index]),
+  );
 }
 
 export function allQuotasMet(quotas: Quotas, state: Int32Array): boolean {

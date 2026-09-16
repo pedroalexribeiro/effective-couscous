@@ -1,5 +1,6 @@
 import {
   minutesToTime,
+  normalizePreferences,
   parseTimeToMinutes,
 } from "../domain/index.ts";
 import type {
@@ -103,9 +104,6 @@ export function organizerFromFileJson(raw: unknown): OrganizerInput {
     periods: (input.periods ?? []).map(periodFromFile),
     freeBlocks: (input.freeBlocks ?? []).map(freeBlockFromFile),
     caseload: (input.caseload ?? []).map(caseloadFromFile),
-    preferences: {
-      ...input.preferences,
-      preferredSubjects: input.preferences?.preferredSubjects ?? [],
-    },
+    preferences: normalizePreferences(input.preferences),
   };
 }

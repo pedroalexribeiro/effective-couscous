@@ -41,20 +41,41 @@ describe("enumerate", () => {
 
   it("enumerates the exact feasible set for two alternative periods", () => {
     const result = enumerate(twoNonOverlappingPeriods());
-    const sets = result.configurations.map((config) => periodIds(config.visits));
-
-    // Either period alone satisfies Ana, and so does attending both. The third
-    // option only exists because the search no longer abandons a branch for
-    // having already succeeded.
-    expect(sets).toEqual(
-      expect.arrayContaining([
-        ["p-math-mon"],
-        ["p-pt-tue"],
-        ["p-math-mon", "p-pt-tue"],
-      ]),
+    const sets = result.configurations.map((config) =>
+      periodIds(config.visits),
     );
-    expect(sets).toHaveLength(3);
+
+    // Either period alone satisfies Ana and your own minutes, so both are
+    // offered. Attending both also satisfies everything, so it is counted —
+    // but it is never offered, because either period could be dropped from it
+    // without breaking anything.
+    expect(sets).toEqual(
+      expect.arrayContaining([["p-math-mon"], ["p-pt-tue"]]),
+    );
+    expect(sets).toHaveLength(2);
     expect(result.totalFound).toBe(3);
+  });
+
+  it("still offers plans that go past a student's minutes when yours demand it", () => {
+    // The search must not stop at the first plan that satisfies everyone —
+    // here reaching your own 135 minutes means giving Ana 135 of her 45.
+    const input = twoNonOverlappingPeriods();
+    input.periods.push({
+      id: "p-mus-wed",
+      turmaId: "turma-5a",
+      weekday: 3,
+      startMinutes: 9 * 60,
+      endMinutes: 9 * 60 + 45,
+      subject: "Music",
+    });
+    input.requiredTotalMinutes = 135;
+
+    const result = enumerate(input);
+
+    expect(result.totalFound).toBe(1);
+    const [config] = result.configurations;
+    expect(config.wallClockMinutes).toBe(135);
+    expect(config.studentMinutes.ana).toBe(45);
   });
 
   it("drops every configuration that collides with a free block", () => {
@@ -72,11 +93,13 @@ describe("enumerate", () => {
     const before = enumerate(twoNonOverlappingPeriods());
     const after = enumerate(withBlock);
 
-    expect(before.configurations.length).toBeGreaterThan(after.configurations.length);
+    expect(before.configurations.length).toBeGreaterThan(
+      after.configurations.length,
+    );
     expect(after.configurations).toHaveLength(1);
-    expect(after.configurations[0].visits.map((visit) => visit.periodId)).toEqual([
-      "p-pt-tue",
-    ]);
+    expect(
+      after.configurations[0].visits.map((visit) => visit.periodId),
+    ).toEqual(["p-pt-tue"]);
   });
 
   it("excludes a period already taken by another professor", () => {
@@ -87,9 +110,9 @@ describe("enumerate", () => {
     const result = enumerate(input);
 
     expect(result.configurations).toHaveLength(1);
-    expect(result.configurations[0].visits.map((visit) => visit.periodId)).toEqual([
-      "p-pt-tue",
-    ]);
+    expect(
+      result.configurations[0].visits.map((visit) => visit.periodId),
+    ).toEqual(["p-pt-tue"]);
   });
 
   it("requires the listed minutes in each subject, not any mix", () => {
@@ -120,11 +143,14 @@ describe("enumerate", () => {
     const result = enumerate(input);
     const mathOnly = result.configurations.find(
       (config) =>
-        config.visits.length === 1 && config.visits[0].periodId === "p-math-mon",
+        config.visits.length === 1 &&
+        config.visits[0].periodId === "p-math-mon",
     );
-    expect(result.configurations[0].visits.some((visit) => visit.periodId === "p-pt-tue")).toBe(
-      true,
-    );
+    expect(
+      result.configurations[0].visits.some(
+        (visit) => visit.periodId === "p-pt-tue",
+      ),
+    ).toBe(true);
     expect(mathOnly).toBeDefined();
     expect(result.configurations[0].score).toBeGreaterThan(mathOnly!.score);
   });
@@ -222,8 +248,18 @@ describe("enumerate", () => {
       subject: "Math",
     });
     input.caseload = [
-      { studentId: "ana", requiredMinutes: 90, requiredSubjects: ["Math"], subjectMinutes: {} },
-      { studentId: "bruno", requiredMinutes: 45, requiredSubjects: ["Math"], subjectMinutes: {} },
+      {
+        studentId: "ana",
+        requiredMinutes: 90,
+        requiredSubjects: ["Math"],
+        subjectMinutes: {},
+      },
+      {
+        studentId: "bruno",
+        requiredMinutes: 45,
+        requiredSubjects: ["Math"],
+        subjectMinutes: {},
+      },
     ];
     input.requiredTotalMinutes = 90;
 
@@ -256,8 +292,8 @@ describe("enumerate", () => {
     expect(phases[0]).toBe("candidates");
     expect(phases).toContain("search");
     expect(phases.at(-1)).toBe("done");
-    expect(messages.some((message) => message.includes("tempos elegíveis"))).toBe(
-      true,
-    );
+    expect(
+      messages.some((message) => message.includes("tempos elegíveis")),
+    ).toBe(true);
   });
 });
